@@ -1,0 +1,3 @@
+../Core/Src/daly_bms.c:12:6:DalyBMS_Request	24	static
+../Core/Src/daly_bms.c:34:6:DalyBMS_Recive	40	static
+../Core/Src/daly_bms.c:80:6:DalyBMS_Parse	32	static

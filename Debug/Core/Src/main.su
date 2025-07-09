@@ -1,0 +1,9 @@
+../Core/Src/main.c:79:5:main	104	static
+../Core/Src/main.c:163:6:SystemClock_Config	72	static
+../Core/Src/main.c:203:13:MX_USART1_UART_Init	8	static
+../Core/Src/main.c:236:13:MX_USART2_UART_Init	8	static
+../Core/Src/main.c:269:13:MX_GPIO_Init	40	static
+../Core/Src/main.c:307:6:StartDefaultTask	16	static
+../Core/Src/main.c:326:6:StartBMSTask	16	static
+../Core/Src/main.c:345:6:StartDebugTask	88	static
+../Core/Src/main.c:364:6:Error_Handler	4	static,ignoring_inline_asm
