@@ -19,7 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include "daly_bms.h"
+#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -34,6 +34,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,12 +45,10 @@
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 osThreadId defaultTaskHandle;
 osThreadId bmsTaskHandle;
-osThreadId debugTaskHandle;
-
-DalyBMS_Data bms;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -59,9 +58,9 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_USART3_UART_Init(void);
 void StartDefaultTask(void const * argument);
 void StartBMSTask(void const * argument);
-void StartDebugTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -103,24 +102,25 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+	/* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
+	/* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
+	/* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -132,12 +132,8 @@ int main(void)
   osThreadDef(bmsTask, StartBMSTask, osPriorityNormal, 0, 128);
   bmsTaskHandle = osThreadCreate(osThread(bmsTask), NULL);
 
-  /* definition and creation of debugTask */
-  osThreadDef(debugTask, StartDebugTask, osPriorityLow, 0, 128);
-  debugTaskHandle = osThreadCreate(osThread(debugTask), NULL);
-
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+	/* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -147,12 +143,12 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+	while (1)
+	{
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+	}
   /* USER CODE END 3 */
 }
 
@@ -164,6 +160,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -190,6 +187,12 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
+  PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL_DIV1_5;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
@@ -262,6 +265,39 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -277,6 +313,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
@@ -306,13 +343,14 @@ static void MX_GPIO_Init(void)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-	HAL_GPIO_TogglePin(GPIOC, LED_Pin);
-    osDelay(100);
-  }
+	/* Infinite loop */
+	for(;;)
+	{
+		osDelay(1000);
+	}
   /* USER CODE END 5 */
 }
 
@@ -326,35 +364,86 @@ void StartDefaultTask(void const * argument)
 void StartBMSTask(void const * argument)
 {
   /* USER CODE BEGIN StartBMSTask */
-  /* Infinite loop */
-  for(;;)
-  {
-
-    osDelay(1000);
+	memset(_tx_buffer, 0x00, FRAME_SIZE);
+	DalyBMS_Clear_Get(&bms_data);
+	/* Infinite loop */
+	for(;;)
+	{
+		//Debug_Printf("BMS request counter: %d\n", _request_counter);
+		switch (_request_counter)
+	    {
+	  		case 0: // Request pack data & connectivity status
+	  			if (DalyBMS_Get_Pack_Data())
+	  			{
+	  				Debug_Printf("BMS request pack data successful\n");
+	  				bms_data.connection_status = true;
+	  				_error_counter = 0; // Reset error counter on successful data retrieval
+	  				_request_counter++;
+	  			}
+	  			else
+	  			{
+	  				Debug_Printf("BMS request pack data failed\n");
+	  				_request_counter = 0; // Reset request counter on failure
+	  				if (_error_counter < MAX_ERROR) _error_counter++;
+	  				else
+	  				{
+	  					bms_data.connection_status = false; // Set connection status to false after max errors
+	  					_error_counter = 0; // Reset error counter after max errors
+	  					if (_bms_request_callback) _bms_request_callback();
+	  				}
+	  			}
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 1: // Request min/max cell voltage
+	  			_request_counter = DalyBMS_Get_Min_Max_Cell_Voltage() ? (_request_counter + 1) : 0;
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 2: // Request min/max temperature
+	  			_request_counter = DalyBMS_Get_Pack_Temperature() ? (_request_counter + 1) : 0;
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 3: // Request charge/discharge MOS status
+	  			_request_counter = DalyBMS_Get_Charge_Discharge_Status() ? (_request_counter + 1) : 0;
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 4: // Request status info
+	  			//Debug_Printf("In case 4!\n");
+	  			_request_counter = DalyBMS_Get_Status_Info() ? (_request_counter + 1) : 0;
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 5: // Request cell voltages
+	  			_request_counter = DalyBMS_Get_Cell_Voltages() ? (_request_counter + 1) : 0;
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 6: // Request cell temperatures
+	  			_request_counter = DalyBMS_Get_Cell_Temperatures() ? (_request_counter + 1) : 0;
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 7: // Request cell balance state
+	  			_request_counter = DalyBMS_Get_Cell_Balance_State() ? (_request_counter + 1) : 0;
+	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+	  			break;
+	  		case 8: // Request failure codes
+	  			_request_counter = DalyBMS_Get_Failure_Codes() ? (_request_counter + 1) : 0;
+	  			if (_get_static_data) _request_counter = 0; // Reset request counter if static data is requested
+	  			if (_bms_request_callback) _bms_request_callback();
+	  			break;
+	  		case 9: // Request Voltage Thresholds
+	  			if (!_get_static_data) _request_counter = DalyBMS_Get_Voltage_Thresholds() ? (_request_counter + 1) : 0;
+	  			if (_bms_request_callback) _bms_request_callback();
+	  			break;
+	  		case 10: // Request Pack Thresholds
+	  			if (!_get_static_data) _request_counter = DalyBMS_Get_Pack_Thresholds() ? (_request_counter + 1) : 0;
+	  			_request_counter = 0; // Reset request counter after pack thresholds
+	  			if (_bms_request_callback) _bms_request_callback();
+	  			_get_static_data = true;
+	  			break;
+	  		default:
+	  			break;
+	    }
+    osDelay(150);
   }
   /* USER CODE END StartBMSTask */
-}
-
-/* USER CODE BEGIN Header_StartDebugTask */
-/**
-* @brief Function implementing the debugTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartDebugTask */
-void StartDebugTask(void const * argument)
-{
-  /* USER CODE BEGIN StartDebugTask */
-	char msg[64];
-  /* Infinite loop */
-  for(;;)
-  {
-	snprintf(msg, sizeof(msg), "BMS: U: %u mV, I: %d mA, SOC: %u%%\r\n",
-	               bms.voltage_mv, bms.current_ma, bms.soc_percent);
-	HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-    osDelay(1000);
-  }
-  /* USER CODE END StartDebugTask */
 }
 
 /**
@@ -366,8 +455,11 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  Debug_Printf("ERROR: system halted\n");
   while (1)
   {
+	  HAL_GPIO_TogglePin(GPIOC, LED_Pin);
+	  HAL_Delay(500);
   }
   /* USER CODE END Error_Handler_Debug */
 }

@@ -1,0 +1,31 @@
+if (!DalyBMS_Request(&huart1, VOUT_IOUT_SOC)) {
+        Debug_Printf(&huart2, "BMS request failed, retrying...\n");
+        DalyBMS_Clear_Get(&bms_data);
+        _request_counter = 0;
+        _error_counter = (_error_counter < MAX_ERROR) ? _error_counter + 1 : 0;
+        bms_data.connection_status = (_error_counter == 0) ? false : bms_data.connection_status;
+        break;
+    }
+
+    float voltage = ((_frame_buff[0][4] << 8) | _frame_buff[0][5]) / 10.0f;
+    float current = (((_frame_buff[0][8] << 8) | _frame_buff[0][9]) - 30000) / 10.0f;
+    float soc     = ((_frame_buff[0][10] << 8) | _frame_buff[0][11]) / 10.0f;
+
+    if (current == -3000.0f) {
+        Debug_Printf(&huart2, "Current out of range, retrying...\n");
+    } else if (soc > 100.0f) {
+        Debug_Printf(&huart2, "SOC out of range, retrying...\n");
+    } else {
+        bms_data.voltage_mv        = voltage;
+        bms_data.current_ma        = current;
+        bms_data.soc_percent       = soc;
+        bms_data.connection_status = true;
+        _error_counter = 0;
+        _request_counter++;
+        break;
+    }
+
+    // Lỗi nếu current hoặc soc không hợp lệ
+    _error_counter = (_error_counter < MAX_ERROR) ? _error_counter + 1 : 0;
+    bms_data.connection_status = (_error_counter == 0) ? false : bms_data.connection_status;
+    break;

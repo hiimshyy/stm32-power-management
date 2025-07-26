@@ -1,0 +1,6 @@
+../Core/Src/sk60x.c:18:17:Calculate_CRC	32	static
+../Core/Src/sk60x.c:31:13:SK60X_Send_Command	24	static
+../Core/Src/sk60x.c:46:6:SK60X_ReadData	16	static
+../Core/Src/sk60x.c:81:6:SK60X_Set_On_Off	24	static
+../Core/Src/sk60x.c:95:6:SK60X_Set_Voltage	24	static
+../Core/Src/sk60x.c:113:6:SK60X_Set_Current	24	static

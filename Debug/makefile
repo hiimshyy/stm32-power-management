@@ -92,7 +92,7 @@ main-build: dalyBms.elf secondary-outputs
 
 # Tool invocations
 dalyBms.elf dalyBms.map: $(OBJS) $(USER_OBJS) D:\TBE\firmware\stm32\dalyBms\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-g++ -o "dalyBms.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"D:\TBE\firmware\stm32\dalyBms\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="dalyBms.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
+	arm-none-eabi-g++ -o "dalyBms.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"D:\TBE\firmware\stm32\dalyBms\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="dalyBms.map" -Wl,--gc-sections -static -u _printf_float --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
