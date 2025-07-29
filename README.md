@@ -28,6 +28,10 @@ This is a smart power management module using STM32 as the central controller, c
 ![System Architecture](./Docs/power_manage_flow.png)
 
 ---
+## 🧷 Pinout Used
+
+![Pinout Used](./Docs/pin_used.png)
+---
 ## 🧰 Main Features
 
 - ✅ Read voltage, current, SoC from DalyBMS
