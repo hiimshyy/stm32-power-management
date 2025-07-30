@@ -4,14 +4,15 @@ This document defines the Modbus RTU register map used for communication between
 
 ## ⚙️ Modbus Configuration
 
-| Parameter      | Value         |
-|----------------|---------------|
-| Slave ID       | `0x01`        |
-| Baudrate       | `9600 bps`    |
-| Data bits      | `8`           |
-| Parity         | `None`        |
-| Stop bits      | `1`           |
-| Supported FCs  | `0x03`, `0x06`, `0x10` |
+| Address   | Name | Description | Data Type | Values / Notes | Default | Access |
+|-----------|------|-------------|-----------|----------------|---------|--------|
+| `0x0100`  | `slave_id` | Modbus slave address | `uint8` | `1–247` | `0x01` | Read/Write |
+| `0x0101`  | `baudrate_code`| UART baudrate setting (encoded) | `uint8` | `1=9600`, `2=19200`, `3=38400`, `4=57600`, `5=115200` | `1` | Read/Write |
+| `0x0102`  | `parity`| UART parity | `uint8` | `0=None`, `1=Even`, `2=Odd` | `0` | Read/Write |
+| `0x0103`  | `stop_bits` | UART stop bits | `uint8` | `1` or `2` | `1` | Read/Write |
+| `0x0104`  | `fc_mask` | Supported function codes (bitmask) | `uint8` | Bitmask: `0x01=FC3`, `0x02=FC6`, `0x04=FC16` | `0x07` | Read/Write |
+| `0x0105`  | `apply_config` | Apply config flag (write = 1 to apply)| `uint8` | `1 = Apply config` | `0` | Write only |
+| `0x0106`  | `config_crc` | Optional CRC for config validation | `uint16` | CRC16 over above config | `0x0000`| Optional |
 
 ---
 
@@ -95,27 +96,85 @@ This document defines the Modbus RTU register map used for communication between
 
 ## 📝 Notes
 
-- **Data Type:**
-  - `float`: 2 registers (4 bytes), IEEE 754 format.
-  - `uint8`: 1 register (1 byte, upper or lower byte used).
-  - `bool`: 1 bit, stored in 1 register.
+- **Data Types:**
+  - `uint8`: 1 register (16-bit) where only 1 byte is used (typically lower byte).
+  - `uint16`: 1 full 16-bit register.
+  - `bool`: 1-bit flag stored inside a full 16-bit register.
+  - `array[N]`: Consecutive registers with N elements.
 
-- **Access:**
-  - `Read Only`: Chỉ đọc, không ghi được qua Modbus RTU.
-  - `Read/Write`: Cho phép đọc và ghi qua Modbus RTU.
+- **Scaling:**
+  - Some values are scaled (e.g., `/10.0`), meaning the raw register value must be divided by 10 to get the actual unit.
+  - For example, `voltage_v = 168 → 16.8V`.
 
-- **Note:** Tất cả địa chỉ được viết ở định dạng Hex (`0x`), theo chuẩn của Modbus.
+- **Access Types:**
+  - `Read Only`: Value is readable via Modbus RTU but cannot be written.
+  - `Read/Write`: Value is both readable and writable.
+  - `Write Only`: Value is writable but not readable.
 
+- **Address Format:**
+  - All register addresses are written in hexadecimal (`0x` prefix) and represent **Modbus register offsets**, not absolute addresses (e.g., Modbus register 40001 → `0x0000`).
 
 ---
 
 ## 🔁 Example Queries
 
-| Action                 | Function Code | Start Addr | Quantity | Notes                      |
-|------------------------|---------------|------------|----------|----------------------------|
-| Read Battery Voltage   | `0x03`        | `0x0000`   | 1        | Read DalyBMS voltage       |
-| Write Relay 12V ON     | `0x06`        | `0x0011`   | 1        | Payload: `0x0001`          |
-| Read All INA219 Data   | `0x03`        | `0x0040`   | 6        | Read all 3 channels (V, I) |
+These examples demonstrate reading/writing registers using Modbus RTU protocol. CRC values are included for 9600 baud, 8N1, and Slave ID `0x01`.
+
+> Use tools like **ModbusTool**, **ModScan**, or **pymodbus** for testing.
 
 ---
+### 📘 1. Read battery voltage from DalyBMS
+
+- **Register**: `0x0000`  
+- **Function**: `0x03` (Read Holding Register)
+
+**Request:** 01 03 00 00 00 01 84 0A
+
+**Response (value = 168):** 01 03 02 00 A8 B8 44
+
+---
+### 🔌 2. Turn SK60X ON (`on_off = 1` at `0x003C`)
+
+**Request:** 01 06 00 3C 00 01 D9 E2
+
+**Response:** 01 06 00 3C 00 01 D9 E2
+
+---
+
+### 📊 3. Read INA219 3 rails (9 registers from `0x0040`)
+
+**Request:** 01 03 00 40 00 09 45 D1
+
+**Response:** 01 03 12 00 C8 00 64 00 96 ... XX XX
+> (example values: voltage = 12.0V, current = 6.4A, power = 9.6W, etc.)
+
+---
+### 🔐 4. Change Modbus Slave ID to `0x02` (write `0x02` to `0x0100`)
+
+**Request:** 01 06 01 00 00 02 28 0B
+
+---
+
+### ⚙️ 5. Apply configuration (`0x0105 ← 0x0001`)
+
+**Request:** 01 06 01 05 00 01 18 C3
+
+---
+
+### 🧰 6. Write multiple config registers at once
+
+Write 5 registers: `slave_id`, `baudrate`, `parity`, `stop_bits`, `fc_mask`
+
+| Value     | Meaning        |
+|-----------|----------------|
+| `0x02`    | Slave ID       |
+| `0x05`    | Baudrate = 115200 |
+| `0x00`    | Parity = None  |
+| `0x01`    | Stop bits = 1  |
+| `0x07`    | Allow FC 3,6,16 |
+
+**Request:** 01 10 01 00 00 05 0A 00 02 00 05 00 00 00 01 00 07 6B B9
+
+---
+
 
