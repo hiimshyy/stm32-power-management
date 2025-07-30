@@ -84,7 +84,7 @@ This document defines the Modbus RTU register map used for communication between
 |---------|------|------|-------------|-----------|---------|-----------|
 | `0x0040` | v_out_12V | V | Voltage of 12V output | `uint8` | /10.0 | Read Only |
 | `0x0041` | i_out_12V | A | Current of 12V output | `uint8` | /10.0 | Read Only |
-| `0x0041` | p_out_12v | W | Power of 12V output | `uint8` | /10.0 | Read Only |
+| `0x0041` | p_out_12V | W | Power of 12V output | `uint8` | /10.0 | Read Only |
 | `0x0042` | v_out_5V | V | Voltage of 5V output | `uint8` | /10.0 | Read Only |
 | `0x0043` | i_out_5v | A | Current of 5V output | `uint8`  | /10.0 | Read Only |
 | `0x0041` | p_out_5V | W | Power of 5V output | `uint8` | /10.0 | Read Only |
