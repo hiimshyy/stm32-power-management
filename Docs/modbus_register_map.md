@@ -2,19 +2,19 @@
 
 This document defines the Modbus RTU register map used for communication between STM32 and an external master device (e.g. Radxa) via RS485. The values are cached from BMS and SK60X modules and stored in EEPROM (AT24C256).
 
-## ⚙️ Modbus Configuration
+  ## ⚙️ Modbus Configuration
 
-| Address   | Name | Description | Data Type | Values / Notes | Default | Access |
-|-----------|------|-------------|-----------|----------------|---------|--------|
-| `0x0100`  | `slave_id` | Modbus slave address | `uint8` | `1–247` | `0x01` | Read/Write |
-| `0x0101`  | `baudrate_code`| UART baudrate setting (encoded) | `uint8` | `1=9600`, `2=19200`, `3=38400`, `4=57600`, `5=115200` | `1` | Read/Write |
-| `0x0102`  | `parity`| UART parity | `uint8` | `0=None`, `1=Even`, `2=Odd` | `0` | Read/Write |
-| `0x0103`  | `stop_bits` | UART stop bits | `uint8` | `1` or `2` | `1` | Read/Write |
-| `0x0104`  | `fc_mask` | Supported function codes (bitmask) | `uint8` | Bitmask: `0x01=FC3`, `0x02=FC6`, `0x04=FC16` | `0x07` | Read/Write |
-| `0x0105`  | `apply_config` | Apply config flag (write = 1 to apply)| `uint8` | `1 = Apply config` | `0` | Write only |
-| `0x0106`  | `config_crc` | Optional CRC for config validation | `uint16` | CRC16 over above config | `0x0000`| Optional |
+  | Address   | Name | Description | Data Type | Values / Notes | Default | Access |
+  |-----------|------|-------------|-----------|----------------|---------|--------|
+  | `0x0100`  | `slave_id` | Modbus slave address | `uint8` | `1–247` | `0x01` | Read/Write |
+  | `0x0101`  | `baudrate_code`| UART baudrate setting (encoded) | `uint8` | `1=9600`, `2=19200`, `3=38400`, `4=57600`, `5=115200` | `1` | Read/Write |
+  | `0x0102`  | `parity`| UART parity | `uint8` | `0=None`, `1=Even`, `2=Odd` | `0` | Read/Write |
+  | `0x0103`  | `stop_bits` | UART stop bits | `uint8` | `1` or `2` | `1` | Read/Write |
+  | `0x0104`  | `fc_mask` | Supported function codes (bitmask) | `uint8` | Bitmask: `0x01=FC3`, `0x02=FC6`, `0x04=FC16` | `0x07` | Read/Write |
+  | `0x0105`  | `apply_config` | Apply config flag (write = 1 to apply)| `uint8` | `1 = Apply config` | `0` | Write only |
+  | `0x0106`  | `config_crc` | Optional CRC for config validation | `uint16` | CRC16 over above config | `0x0000`| Optional |
 
----
+  ---
 
 ## 📑 Register Map
 ### 0x0000 – DalyBMS Status
