@@ -87,7 +87,7 @@ typedef struct {
 
     // connection status
     bool connection_status;
-	uint8_t fault_flags;
+    uint64_t fault_flags;
 } DalyBMS_Data;
 
 typedef enum {
@@ -116,18 +116,82 @@ typedef enum {
 	OFFLINE = 0x03,
 } DalyBMS_Charge_Discharge_Status;
 
-extern uint8_t _rx_buffer[FRAME_SIZE];
+typedef enum {
+    // Byte 0x00
+    BMS_ERR_CELL_VOLT_HIGH_LVL2   = (1ULL << 0),
+    BMS_ERR_CELL_VOLT_HIGH_LVL1   = (1ULL << 1),
+    BMS_ERR_CELL_VOLT_LOW_LVL2    = (1ULL << 2),
+    BMS_ERR_CELL_VOLT_LOW_LVL1    = (1ULL << 3),
+    BMS_ERR_SUM_VOLT_HIGH_LVL2    = (1ULL << 4),
+    BMS_ERR_SUM_VOLT_HIGH_LVL1    = (1ULL << 5),
+    BMS_ERR_SUM_VOLT_LOW_LVL2     = (1ULL << 6),
+    BMS_ERR_SUM_VOLT_LOW_LVL1     = (1ULL << 7),
+
+    // Byte 0x01
+    BMS_ERR_CHG_TEMP_HIGH_LVL2    = (1ULL << 8),
+    BMS_ERR_CHG_TEMP_HIGH_LVL1    = (1ULL << 9),
+    BMS_ERR_CHG_TEMP_LOW_LVL2     = (1ULL << 10),
+    BMS_ERR_CHG_TEMP_LOW_LVL1     = (1ULL << 11),
+    BMS_ERR_DISCHG_TEMP_HIGH_LVL2 = (1ULL << 12),
+    BMS_ERR_DISCHG_TEMP_HIGH_LVL1 = (1ULL << 13),
+    BMS_ERR_DISCHG_TEMP_LOW_LVL2  = (1ULL << 14),
+    BMS_ERR_DISCHG_TEMP_LOW_LVL1  = (1ULL << 15),
+
+    // Byte 0x02
+    BMS_ERR_CHG_OVERCURRENT_LVL2  = (1ULL << 16),
+    BMS_ERR_CHG_OVERCURRENT_LVL1  = (1ULL << 17),
+    BMS_ERR_DISCHG_OVERCURRENT_LVL2 = (1ULL << 18),
+    BMS_ERR_DISCHG_OVERCURRENT_LVL1 = (1ULL << 19),
+    BMS_ERR_SOC_HIGH_LVL2         = (1ULL << 20),
+    BMS_ERR_SOC_HIGH_LVL1         = (1ULL << 21),
+    BMS_ERR_SOC_LOW_LVL2          = (1ULL << 22),
+    BMS_ERR_SOC_LOW_LVL1          = (1ULL << 23),
+
+    // Byte 0x03
+    BMS_ERR_DIFF_VOLT_LVL2        = (1ULL << 24),
+    BMS_ERR_DIFF_VOLT_LVL1        = (1ULL << 25),
+    BMS_ERR_DIFF_TEMP_LVL2        = (1ULL << 26),
+    BMS_ERR_DIFF_TEMP_LVL1        = (1ULL << 27),
+
+    // Byte 0x04
+    BMS_ERR_CHG_MOS_TEMP_HIGH     = (1ULL << 28),
+    BMS_ERR_DISCHG_MOS_TEMP_HIGH  = (1ULL << 29),
+    BMS_ERR_CHG_MOS_TEMP_SENSOR   = (1ULL << 30),
+    BMS_ERR_DISCHG_MOS_TEMP_SENSOR= (1ULL << 31),
+    BMS_ERR_CHG_MOS_ADHESION      = (1ULL << 32),
+    BMS_ERR_DISCHG_MOS_ADHESION   = (1ULL << 33),
+    BMS_ERR_CHG_MOS_OPEN_CIRCUIT  = (1ULL << 34),
+    BMS_ERR_DISCHG_MOS_OPEN_CIRCUIT= (1ULL << 35),
+
+    // Byte 0x05
+    BMS_ERR_AFE_CHIP              = (1ULL << 36),
+    BMS_ERR_VOLT_COLLECT_DROPPED  = (1ULL << 37),
+    BMS_ERR_CELL_TEMP_SENSOR      = (1ULL << 38),
+    BMS_ERR_EEPROM                = (1ULL << 39),
+    BMS_ERR_RTC                   = (1ULL << 40),
+    BMS_ERR_PRECHARGE_FAIL        = (1ULL << 41),
+    BMS_ERR_COMM_FAIL             = (1ULL << 42),
+    BMS_ERR_INTERNAL_COMM_FAIL    = (1ULL << 43),
+
+    // Byte 0x06
+    BMS_ERR_CURRENT_MODULE        = (1ULL << 44),
+    BMS_ERR_SUM_VOLT_DETECT       = (1ULL << 45),
+    BMS_ERR_SHORT_CIRCUIT         = (1ULL << 46),
+    BMS_ERR_LOW_VOLT_FORBID_CHG   = (1ULL << 47)
+} DalyBMS_ErrorFlags;
+
 extern uint8_t _tx_buffer[FRAME_SIZE];
-extern uint8_t _frame_buff[12][FRAME_SIZE];
-extern uint8_t _rx_frame_buffer[FRAME_SIZE*12];
+extern uint8_t _frame_buff[4][FRAME_SIZE];
+extern uint8_t _rx_frame_buffer[FRAME_SIZE*4];
 
-extern uint8_t _commandBuffer[5];
-
-extern uint8_t _frame_index;
 extern uint8_t _frame_count;
 extern uint8_t _error_counter;
-extern uint8_t _request_count;
 extern uint8_t _request_counter;
+extern uint8_t _tx_checksum;
+extern uint8_t _rx_checksum;
+extern uint8_t _cell_num;
+extern uint8_t _cell_bit;
+extern uint8_t _balance_frame_count;
 
 extern bool	_get_static_data;
 
@@ -155,7 +219,6 @@ bool DalyBMS_Set_Charge_MOS(bool enable);
 bool DalyBMS_Set_SoC(float soc);
 bool DalyBMS_Reset();
 
-uint8_t DalyBMS_Calculate_Checksum(uint8_t *buffer, uint8_t length);
 bool DalyBMS_Validate_Checksum();
 void DalyBMS_Clear_Get();
 void DalyBMS_On_Request_Done();

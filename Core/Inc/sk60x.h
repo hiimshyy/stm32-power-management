@@ -22,7 +22,7 @@
 #define READ_REGISTERS 0x03
 #define WRITE_REGISTERS 0x06
 #define REQUEST_FRAME_SIZE 8
-#define RESPONSE_FRAME_SIZE 20
+#define RESPONSE_FRAME_SIZE 42
 #define SK60X_MAX_VOLTAGE 36.0f
 #define SK60X_MAX_CURRENT 5.0f
 #define SK60X_MIN_VOLTAGE 6.0f
@@ -37,19 +37,20 @@ typedef enum {
 } SK60X_Command;
 
 typedef struct {
-    float v_set;
-    float i_set;
-    float v_out;
-    float i_out;
-    float p_out;
-    float v_in;
-    float i_in;
-    float temp;
-    uint8_t h_use;
-    uint8_t m_use;
-    uint8_t s_use;
-    bool  status;
-    bool  on_off;
+	uint16_t v_set;
+	uint16_t i_set;
+	uint16_t v_out;
+	uint16_t i_out;
+	uint16_t p_out;
+	uint16_t v_in;
+	uint16_t i_in;
+	uint16_t lock_v;
+	uint16_t temp;
+	uint16_t h_use;
+	uint16_t m_use;
+	uint16_t s_use;
+	uint16_t  status;
+	uint16_t  on_off;
 
 } SK60X_Data;
 
@@ -60,6 +61,7 @@ extern uint8_t _sk60_tx_buffer[REQUEST_FRAME_SIZE];
 
 bool SK60X_Read_Data();
 bool SK60X_Fan_Control(bool enable);
+bool SK60X_Check_Connection(void);
 void SK60X_Set_On_Off(bool on);
 void SK60X_Set_Voltage(float voltage);
 void SK60X_Set_Current(float current);

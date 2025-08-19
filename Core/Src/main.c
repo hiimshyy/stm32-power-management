@@ -20,6 +20,10 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "usb_device.h"
+#include "daly_bms.h"
+#include "sk60x.h"
+#include "debugger.h"
+#include "modbus_rtu.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -49,6 +53,7 @@ UART_HandleTypeDef huart3;
 
 osThreadId defaultTaskHandle;
 osThreadId bmsTaskHandle;
+osThreadId sk60xTaskHandle;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -61,6 +66,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 void StartDefaultTask(void const * argument);
 void StartBMSTask(void const * argument);
+void StartSK60xTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -105,6 +111,7 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
+  ModbusRTU_Init();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -129,8 +136,12 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of bmsTask */
-  osThreadDef(bmsTask, StartBMSTask, osPriorityNormal, 0, 128);
+  osThreadDef(bmsTask, StartBMSTask, osPriorityNormal, 0, 512);
   bmsTaskHandle = osThreadCreate(osThread(bmsTask), NULL);
+
+  /* definition and creation of sk60xTask */
+  osThreadDef(sk60xTask, StartSK60xTask, osPriorityNormal, 0, 256);
+  sk60xTaskHandle = osThreadCreate(osThread(sk60xTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
@@ -316,14 +327,34 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, LED_Pin|LED_FAULT_Pin|LED_UART_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LED_Pin */
-  GPIO_InitStruct.Pin = LED_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, RL_12V_Pin|RL_CHG_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : LED_Pin LED_FAULT_Pin LED_UART_Pin */
+  GPIO_InitStruct.Pin = LED_Pin|LED_FAULT_Pin|LED_UART_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : RL_3V3_Pin RL_5V_Pin */
+  GPIO_InitStruct.Pin = RL_3V3_Pin|RL_5V_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : RL_12V_Pin RL_CHG_Pin */
+  GPIO_InitStruct.Pin = RL_12V_Pin|RL_CHG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -343,13 +374,22 @@ static void MX_GPIO_Init(void)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
-  /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
-  /* USER CODE BEGIN 5 */
-	/* Infinite loop */
-	for(;;)
-	{
-		osDelay(1000);
+	/* init code for USB_DEVICE */
+	MX_USB_DEVICE_Init();
+	/* USER CODE BEGIN 5 */
+    /* Infinite loop */
+    for(;;)
+    {
+//        // Nhận frame Modbus RTU từ UART2 (ví dụ blocking, có thể cải tiến DMA/interrupt)
+//        uint8_t rx_buf[256];
+//        int rx_len = HAL_UART_Receive(&huart2, rx_buf, sizeof(rx_buf), 10); // timeout 10ms
+//        if (rx_len > 0) {
+//            ModbusRTU_Handle_Frame(rx_buf, rx_len);
+//        }
+		HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOB, RL_12V_Pin|RL_CHG_Pin, GPIO_PIN_SET);
+		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+		osDelay(500);
 	}
   /* USER CODE END 5 */
 }
@@ -369,22 +409,23 @@ void StartBMSTask(void const * argument)
 	/* Infinite loop */
 	for(;;)
 	{
-		//Debug_Printf("BMS request counter: %d\n", _request_counter);
 		switch (_request_counter)
 	    {
 	  		case 0: // Request pack data & connectivity status
 	  			if (DalyBMS_Get_Pack_Data())
 	  			{
-	  				Debug_Printf("BMS request pack data successful\n");
+	  				HAL_GPIO_WritePin(LED_GPIO_Port, LED_UART_Pin, GPIO_PIN_SET);
 	  				bms_data.connection_status = true;
 	  				_error_counter = 0; // Reset error counter on successful data retrieval
 	  				_request_counter++;
 	  			}
 	  			else
 	  			{
-	  				Debug_Printf("BMS request pack data failed\n");
+	  				HAL_GPIO_WritePin(LED_GPIO_Port, LED_UART_Pin, GPIO_PIN_RESET);
 	  				_request_counter = 0; // Reset request counter on failure
-	  				if (_error_counter < MAX_ERROR) _error_counter++;
+	  				if (_error_counter < MAX_ERROR) {
+	  					_error_counter++;
+	  				}
 	  				else
 	  				{
 	  					bms_data.connection_status = false; // Set connection status to false after max errors
@@ -396,32 +437,32 @@ void StartBMSTask(void const * argument)
 	  			break;
 	  		case 1: // Request min/max cell voltage
 	  			_request_counter = DalyBMS_Get_Min_Max_Cell_Voltage() ? (_request_counter + 1) : 0;
-	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
 	  		case 2: // Request min/max temperature
 	  			_request_counter = DalyBMS_Get_Pack_Temperature() ? (_request_counter + 1) : 0;
-	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
 	  		case 3: // Request charge/discharge MOS status
 	  			_request_counter = DalyBMS_Get_Charge_Discharge_Status() ? (_request_counter + 1) : 0;
-	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
 	  		case 4: // Request status info
 	  			//Debug_Printf("In case 4!\n");
 	  			_request_counter = DalyBMS_Get_Status_Info() ? (_request_counter + 1) : 0;
-	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
 	  		case 5: // Request cell voltages
 	  			_request_counter = DalyBMS_Get_Cell_Voltages() ? (_request_counter + 1) : 0;
-	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
 	  		case 6: // Request cell temperatures
 	  			_request_counter = DalyBMS_Get_Cell_Temperatures() ? (_request_counter + 1) : 0;
-	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
 	  		case 7: // Request cell balance state
 	  			_request_counter = DalyBMS_Get_Cell_Balance_State() ? (_request_counter + 1) : 0;
-	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
+//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
 	  		case 8: // Request failure codes
 	  			_request_counter = DalyBMS_Get_Failure_Codes() ? (_request_counter + 1) : 0;
@@ -446,6 +487,43 @@ void StartBMSTask(void const * argument)
   /* USER CODE END StartBMSTask */
 }
 
+/* USER CODE BEGIN Header_StartSK60xTask */
+/**
+* @brief Function implementing the sk60xTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartSK60xTask */
+void StartSK60xTask(void const * argument)
+{
+  /* USER CODE BEGIN StartSK60xTask */
+  /* Infinite loop */
+  for(;;)
+  {
+	  if (SK60X_Read_Data())
+	  {
+		  Debug_Printf("<SK60x> - Voltage set: %d V\n", sk60x_data.v_set);
+		  Debug_Printf("<SK60x> - Current set: %d A\n", sk60x_data.i_set);
+		  Debug_Printf("<SK60x> - Voltage: %d V\n", sk60x_data.v_out);
+		  Debug_Printf("<SK60x> - Current: %d A\n", sk60x_data.i_out);
+		  Debug_Printf("<SK60x> - Power: %d W\n", sk60x_data.p_out);
+		  Debug_Printf("<SK60x> - Voltage in: %d V\n", sk60x_data.v_in);
+		  Debug_Printf("<SK60x> - Current in: %d V\n", sk60x_data.i_in);
+		  Debug_Printf("<SK60x> - Temperature: %d C\n", sk60x_data.temp);
+		  Debug_Printf("<SK60x> - Volage lock: %d \n", sk60x_data.lock_v);
+		  Debug_Printf("<SK60x> - Time used: %d h %d m %d s\n", sk60x_data.h_use, sk60x_data.m_use, sk60x_data.s_use);
+		  Debug_Printf("<SK60x> - Is using: %d \n", sk60x_data.status);
+		  Debug_Printf("<SK60x> - Status: %d\n", sk60x_data.on_off);
+	  }
+	  else
+	  {
+		  Debug_Printf("<SK60x> - Failed to read data!\n");
+	}
+    osDelay(500);
+  }
+  /* USER CODE END StartSK60xTask */
+}
+
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
@@ -455,11 +533,10 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  Debug_Printf("ERROR: system halted\n");
   while (1)
   {
-	  HAL_GPIO_TogglePin(GPIOC, LED_Pin);
-	  HAL_Delay(500);
+	  HAL_GPIO_TogglePin(GPIOC, LED_FAULT_Pin);
+	  osDelay(100);
   }
   /* USER CODE END Error_Handler_Debug */
 }

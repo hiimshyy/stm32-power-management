@@ -43,39 +43,83 @@ static bool SK60X_Send_Command(uint8_t command, uint16_t value)
 	return (HAL_UART_Transmit(&huart3, _sk60_tx_buffer, REQUEST_FRAME_SIZE, 100) == HAL_OK);
 }
 
-bool SK60X_ReadData()
+bool SK60X_Read_Data()
 {
 	memset(_sk60_rx_buffer, 0x00, RESPONSE_FRAME_SIZE);
 	memset(_sk60_tx_buffer, 0x00, REQUEST_FRAME_SIZE);
 	_sk60_tx_buffer[0] = SK60X_ADDR;        // Device address
 	_sk60_tx_buffer[1] = READ_REGISTERS;    // Function code: Read Holding Registers
-	_sk60_tx_buffer[3] = START_ADDRESS;     // Start address
-	_sk60_tx_buffer[5] = QUANTITY;          // Quantity of registers to read
+	_sk60_tx_buffer[2] = START_ADDRESS >> 8;
+	_sk60_tx_buffer[3] = START_ADDRESS & 0xFF;
+	_sk60_tx_buffer[4] = (QUANTITY >> 8) & 0xFF; // Number of registers to read (high byte)
+	_sk60_tx_buffer[5] = QUANTITY & 0xFF;        // Number of registers to read (low byte)
 
 
     uint16_t crc = Calculate_CRC(_sk60_tx_buffer, 6);
     _sk60_tx_buffer[6] = crc & 0xFF;
-    _sk60_tx_buffer[7] = (crc >> 8) & 0xFF;
+    _sk60_tx_buffer[7] = crc >> 8;
+//    Debug_Printf("<SK60x> - Sending request:\n");
+//    for (size_t i = 0; i < REQUEST_FRAME_SIZE; i++)
+//    	Debug_Printf(" %02X", _sk60_tx_buffer[i]);
+//    Debug_Printf("\n");
 
-    HAL_UART_Transmit(&huart3, _sk60_tx_buffer, REQUEST_FRAME_SIZE, 100);
-    HAL_UART_Receive(&huart3, _sk60_rx_buffer, sizeof(_sk60_rx_buffer), 500);
+    if(HAL_UART_Transmit(&huart3, _sk60_tx_buffer, REQUEST_FRAME_SIZE, 100) != HAL_OK)
+    	return false;
+    if(HAL_UART_Receive(&huart3, _sk60_rx_buffer, sizeof(_sk60_rx_buffer), 500) != HAL_OK)
+    	return false;
+//    Debug_Printf("<SK60x> - Received:\n");
+//    for (size_t i = 0; i < RESPONSE_FRAME_SIZE; i++)
+//	{
+//		Debug_Printf(" %02X", _sk60_rx_buffer[i]);
+//	}
+//    Debug_Printf("\n");
 
-    sk60x_data.v_set = _sk60_rx_buffer[0] / 100.0f;
-    sk60x_data.i_set = _sk60_rx_buffer[1] / 100.0f;
-    sk60x_data.v_out = _sk60_rx_buffer[2] / 100.0f;
-    sk60x_data.i_out = _sk60_rx_buffer[3] / 100.0f;
-    sk60x_data.p_out = _sk60_rx_buffer[4] / 100.0f;
-    sk60x_data.v_in  = _sk60_rx_buffer[5] / 100.0f;
-    sk60x_data.i_in  = _sk60_rx_buffer[6] / 100.0f;
+    sk60x_data.v_set = (_sk60_rx_buffer[4] << 8) | _sk60_rx_buffer[5];
+    sk60x_data.i_set = (_sk60_rx_buffer[6] << 8) | _sk60_rx_buffer[7];
+    sk60x_data.v_out = (_sk60_rx_buffer[8] << 8) | _sk60_rx_buffer[9];
+    sk60x_data.i_out = (_sk60_rx_buffer[10] << 8) | _sk60_rx_buffer[11];
+    sk60x_data.p_out = (_sk60_rx_buffer[12] << 8) | _sk60_rx_buffer[13];
+    sk60x_data.v_in  = (_sk60_rx_buffer[14] << 8) | _sk60_rx_buffer[15];
+    sk60x_data.i_in  = (_sk60_rx_buffer[16] << 8) | _sk60_rx_buffer[17];
 
-    sk60x_data.h_use = _sk60_rx_buffer[10];
-    sk60x_data.m_use = _sk60_rx_buffer[11];
-    sk60x_data.s_use = _sk60_rx_buffer[12];
-    sk60x_data.temp  = _sk60_rx_buffer[13] / 10.0f; // Convert to Celsius
-    sk60x_data.status = _sk60_rx_buffer[17] ? true : false; // Status bit
-    sk60x_data.on_off = _sk60_rx_buffer[18] ? true : false; // On/Off state
+    sk60x_data.h_use  = (_sk60_rx_buffer[24] << 8) | _sk60_rx_buffer[25];
+    sk60x_data.m_use  = (_sk60_rx_buffer[26] << 8) | _sk60_rx_buffer[27];
+    sk60x_data.s_use  = (_sk60_rx_buffer[28] << 8) | _sk60_rx_buffer[29];
+    sk60x_data.temp   = (_sk60_rx_buffer[30] << 8) | _sk60_rx_buffer[31];
+    sk60x_data.lock_v = (_sk60_rx_buffer[34] << 8) | _sk60_rx_buffer[35];
+    sk60x_data.status = (_sk60_rx_buffer[38] << 8) | _sk60_rx_buffer[39];
+    sk60x_data.on_off = (_sk60_rx_buffer[40] << 8) | _sk60_rx_buffer[41];
 
     return true;
+}
+
+bool SK60X_Check_Connection()
+{
+	memset(_sk60_tx_buffer, 0x00, REQUEST_FRAME_SIZE);
+	_sk60_tx_buffer[0] = SK60X_ADDR;        // Device address
+	_sk60_tx_buffer[1] = READ_REGISTERS;    // Function code: Read Holding Registers
+	_sk60_tx_buffer[2] = START_ADDRESS >> 8;
+	_sk60_tx_buffer[3] = START_ADDRESS & 0xFF;
+	_sk60_tx_buffer[4] = (QUANTITY >> 8) & 0xFF; // Number of registers to read (high byte)
+	_sk60_tx_buffer[5] = QUANTITY & 0xFF;        // Number of registers to read (low byte)
+
+	uint16_t crc = Calculate_CRC(_sk60_tx_buffer, 6);
+	_sk60_tx_buffer[6] = crc & 0xFF;
+	_sk60_tx_buffer[7] = crc >> 8;
+
+	if(HAL_UART_Transmit(&huart3, _sk60_tx_buffer, REQUEST_FRAME_SIZE, 100) != HAL_OK)
+	{
+		Debug_Printf("SK60X Connection Check failed to send request\n");
+		return false; // Failed to send request
+	}
+
+	if(HAL_UART_Receive(&huart3, _sk60_rx_buffer, RESPONSE_FRAME_SIZE, 500) != HAL_OK)
+	{
+		Debug_Printf("SK60X Connection Check failed to receive response\n");
+		return false; // Failed to receive response
+	}
+
+	return true; // Connection is valid if we received a response
 }
 
 void SK60X_Set_On_Off(bool on)
