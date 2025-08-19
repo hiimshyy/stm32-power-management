@@ -23,7 +23,7 @@
 #include "daly_bms.h"
 #include "sk60x.h"
 #include "debugger.h"
-#include "modbus_rtu.h"
+#include "ina219.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -47,6 +47,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
@@ -54,6 +56,9 @@ UART_HandleTypeDef huart3;
 osThreadId defaultTaskHandle;
 osThreadId bmsTaskHandle;
 osThreadId sk60xTaskHandle;
+osThreadId ina219TaskHandle;
+// Khai báo biến toàn cục cho 3 cảm biến INA219
+INA219_t ina_12v, ina_5v, ina_3v3;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -64,9 +69,11 @@ static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_I2C1_Init(void);
 void StartDefaultTask(void const * argument);
 void StartBMSTask(void const * argument);
 void StartSK60xTask(void const * argument);
+void StartTaskINA219(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -109,9 +116,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
-  ModbusRTU_Init();
+  Debug_Init();
+  Debug_SetMode(DEBUG_BOTH); // Set debug mode to both USB and UART
+//  ModbusRTU_Init();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -132,7 +142,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 64);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of bmsTask */
@@ -142,6 +152,10 @@ int main(void)
   /* definition and creation of sk60xTask */
   osThreadDef(sk60xTask, StartSK60xTask, osPriorityNormal, 0, 256);
   sk60xTaskHandle = osThreadCreate(osThread(sk60xTask), NULL);
+
+  /* definition and creation of ina219Task */
+  osThreadDef(ina219Task, StartTaskINA219, osPriorityNormal, 0, 256);
+  ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
@@ -207,6 +221,40 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -374,18 +422,12 @@ static void MX_GPIO_Init(void)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
-	/* init code for USB_DEVICE */
-	MX_USB_DEVICE_Init();
-	/* USER CODE BEGIN 5 */
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
+  /* USER CODE BEGIN 5 */
     /* Infinite loop */
     for(;;)
     {
-//        // Nhận frame Modbus RTU từ UART2 (ví dụ blocking, có thể cải tiến DMA/interrupt)
-//        uint8_t rx_buf[256];
-//        int rx_len = HAL_UART_Receive(&huart2, rx_buf, sizeof(rx_buf), 10); // timeout 10ms
-//        if (rx_len > 0) {
-//            ModbusRTU_Handle_Frame(rx_buf, rx_len);
-//        }
 		HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(GPIOB, RL_12V_Pin|RL_CHG_Pin, GPIO_PIN_SET);
 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
@@ -522,6 +564,54 @@ void StartSK60xTask(void const * argument)
     osDelay(500);
   }
   /* USER CODE END StartSK60xTask */
+}
+
+/* USER CODE BEGIN Header_StartTaskINA219 */
+/**
+* @brief Function implementing the ina219Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTaskINA219 */
+void StartTaskINA219(void const * argument)
+{
+  /* USER CODE BEGIN StartTaskINA219 */
+  INA219_Init(&ina_12v, &hi2c1, INA219_ADDR_12V, 0.1f, 3.0f);   // Rshunt = 0.1Ω, dòng tối đa 3A
+  INA219_Init(&ina_5v,  &hi2c1, INA219_ADDR_5V,  0.1f, 3.0f);
+  INA219_Init(&ina_3v3, &hi2c1, INA219_ADDR_3V3, 0.1f, 3.0f);
+
+  float v, i, p;
+  HAL_StatusTypeDef ret;
+  /* Infinite loop */
+  for(;;)
+  {
+    // Đọc và in giá trị INA219 12V
+    ret = INA219_Read_Bus_Voltage(&ina_12v, &v);
+    if(ret == HAL_OK) Debug_Printf("INA219-12V: V=%.3fV ", v);
+    ret = INA219_Read_Current(&ina_12v, &i);
+    if(ret == HAL_OK) Debug_Printf("I=%.3fA ", i);
+    ret = INA219_Read_Power(&ina_12v, &p);
+    if(ret == HAL_OK) Debug_Printf("P=%.3fW\n", p);
+
+    // Đọc và in giá trị INA219 5V
+    ret = INA219_Read_Bus_Voltage(&ina_5v, &v);
+    if(ret == HAL_OK) Debug_Printf("INA219-5V: V=%.3fV ", v);
+    ret = INA219_Read_Current(&ina_5v, &i);
+    if(ret == HAL_OK) Debug_Printf("I=%.3fA ", i);
+    ret = INA219_Read_Power(&ina_5v, &p);
+    if(ret == HAL_OK) Debug_Printf("P=%.3fW\n", p);
+
+    // Đọc và in giá trị INA219 3V3
+    ret = INA219_Read_Bus_Voltage(&ina_3v3, &v);
+    if(ret == HAL_OK) Debug_Printf("INA219-3V3: V=%.3fV ", v);
+    ret = INA219_Read_Current(&ina_3v3, &i);
+    if(ret == HAL_OK) Debug_Printf("I=%.3fA ", i);
+    ret = INA219_Read_Power(&ina_3v3, &p);
+    if(ret == HAL_OK) Debug_Printf("P=%.3fW\n", p);
+
+    osDelay(1000);
+  }
+  /* USER CODE END StartTaskINA219 */
 }
 
 /**
