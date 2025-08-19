@@ -24,6 +24,7 @@
 #include "sk60x.h"
 #include "debugger.h"
 #include "ina219.h"
+#include "modbus_rtu.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -57,7 +58,8 @@ osThreadId defaultTaskHandle;
 osThreadId bmsTaskHandle;
 osThreadId sk60xTaskHandle;
 osThreadId ina219TaskHandle;
-// Khai báo biến toàn cục cho 3 cảm biến INA219
+osThreadId modbusTaskHandle;
+
 INA219_t ina_12v, ina_5v, ina_3v3;
 /* USER CODE BEGIN PV */
 
@@ -74,6 +76,7 @@ void StartDefaultTask(void const * argument);
 void StartBMSTask(void const * argument);
 void StartSK60xTask(void const * argument);
 void StartTaskINA219(void const * argument);
+void StartModbusTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -120,8 +123,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
   Debug_Init();
-  Debug_SetMode(DEBUG_BOTH); // Set debug mode to both USB and UART
-//  ModbusRTU_Init();
+  Debug_SetMode(DEBUG_USB); // Enable USB debug để xem Modbus log
+  ModbusRTU_Init(&huart2, 0x01);  // Khởi tạo Modbus RTU trên UART2 với slave ID = 1
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -156,6 +159,10 @@ int main(void)
   /* definition and creation of ina219Task */
   osThreadDef(ina219Task, StartTaskINA219, osPriorityNormal, 0, 256);
   ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
+
+  /* definition and creation of modbusTask */
+  osThreadDef(modbusTask, StartModbusTask, osPriorityNormal, 0, 512);
+  modbusTaskHandle = osThreadCreate(osThread(modbusTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
@@ -411,6 +418,16 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+/**
+ * @brief UART Rx Complete Callback
+ * @param huart: UART handle pointer
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    // Xử lý callback cho Modbus RTU
+    ModbusRTU_RxCpltCallback(huart);
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -428,9 +445,12 @@ void StartDefaultTask(void const * argument)
     /* Infinite loop */
     for(;;)
     {
+//    	Debug_USB_Process();
+		// Tự động bật các relay power rails
 		HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(GPIOB, RL_12V_Pin|RL_CHG_Pin, GPIO_PIN_SET);
 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+		
 		osDelay(500);
 	}
   /* USER CODE END 5 */
@@ -612,6 +632,30 @@ void StartTaskINA219(void const * argument)
     osDelay(1000);
   }
   /* USER CODE END StartTaskINA219 */
+}
+
+/* USER CODE BEGIN Header_StartModbusTask */
+/**
+* @brief Function implementing the modbusTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartModbusTask */
+void StartModbusTask(void const * argument)
+{
+  /* USER CODE BEGIN StartModbusTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    // Xử lý Modbus RTU
+    ModbusRTU_Process();
+    
+    // Cập nhật dữ liệu từ các nguồn
+    ModbusRTU_UpdateDataFromSources();
+    
+    osDelay(1);  // 1ms delay để xử lý nhanh hơn
+  }
+  /* USER CODE END StartModbusTask */
 }
 
 /**
