@@ -61,8 +61,11 @@ osThreadId ina219TaskHandle;
 osThreadId modbusTaskHandle;
 
 INA219_t ina_12v, ina_5v, ina_3v3;
-/* USER CODE BEGIN PV */
 
+/* USER CODE BEGIN PV */
+// Variables for relay control logic (accessible from Modbus)
+bool relay_power_enabled = false;
+float voltage_threshold = 13.5f;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -120,11 +123,16 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_I2C1_Init();
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
   Debug_Init();
   Debug_SetMode(DEBUG_USB); // Enable USB debug để xem Modbus log
   ModbusRTU_Init(&huart2, 0x01);  // Khởi tạo Modbus RTU trên UART2 với slave ID = 1
+  Debug_Printf("=== SYSTEM BOOT ===\r\n");
+  Debug_Printf("Firmware Version: 1.0\r\n");
+  Debug_Printf("Modbus Slave ID: %d\r\n", 0x01);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -439,16 +447,28 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
-  /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
-  /* USER CODE BEGIN 5 */
+
+    /* USER CODE BEGIN 5 */
     /* Infinite loop */
     for(;;)
     {
-//    	Debug_USB_Process();
-		// Tự động bật các relay power rails
-		HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOB, RL_12V_Pin|RL_CHG_Pin, GPIO_PIN_SET);
+    	Debug_USB_Process();
+		// Điều khiển relay dựa trên điện áp BMS với hysteresis
+		if (!relay_power_enabled && bms_data.voltage_v > voltage_threshold) {
+			// Bật relay power rails khi voltage > 13.5V
+			HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOB, RL_12V_Pin, GPIO_PIN_SET);
+			relay_power_enabled = true;
+		} else if (relay_power_enabled && bms_data.voltage_v < voltage_threshold) {
+			// Tắt relay power rails khi voltage < 13.0V
+			HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOB, RL_12V_Pin, GPIO_PIN_RESET);
+			relay_power_enabled = false;
+		}
+		
+		// Charge relay luôn bật (độc lập với voltage)
+		HAL_GPIO_WritePin(GPIOB, RL_CHG_Pin, GPIO_PIN_SET);
+		
 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 		
 		osDelay(500);
@@ -669,7 +689,7 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-	  HAL_GPIO_TogglePin(GPIOC, LED_FAULT_Pin);
+//	  HAL_GPIO_TogglePin(GPIOC, LED_FAULT_Pin);
 	  osDelay(100);
   }
   /* USER CODE END Error_Handler_Debug */

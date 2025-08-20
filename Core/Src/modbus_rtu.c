@@ -148,10 +148,10 @@ bool ModbusRTU_CheckCRC(uint8_t *frame, uint16_t length)
  */
 ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
 {
-    // Tính CRC và thêm vào cuối frame
+    // Tính CRC và thêm vào frame
     uint16_t crc = ModbusRTU_CalculateCRC(data, length);
-    data[length] = crc & 0xFF;        // CRC Low
-    data[length + 1] = (crc >> 8) & 0xFF;  // CRC High
+    data[length] = crc & 0xFF;
+    data[length + 1] = (crc >> 8) & 0xFF;
     length += 2;
     
     #ifdef DEBUG_MODBUS
@@ -162,13 +162,22 @@ ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
     Debug_Printf("\n");
     #endif
     
-    // Gửi dữ liệu
+    // 🔥 Tạm dừng UART receive trước khi transmit
+    HAL_UART_AbortReceive_IT(modbus_rtu.huart);
+
+    // Gửi response
     if (HAL_UART_Transmit(modbus_rtu.huart, data, length, MODBUS_TIMEOUT_MS) != HAL_OK) {
         return MODBUS_ERROR_DEVICE_FAILURE;
     }
     
-    // Delay nhỏ để đảm bảo transmission hoàn tất (giảm xuống cho performance)
-    HAL_Delay(1);
+    // 🔥 QUAN TRỌNG: Reset hoàn toàn buffer RX sau khi transmit
+    modbus_rtu.rx_length = 0;
+    memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+    
+    // Restart UART receive
+    if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
+        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
+    }
     
     return MODBUS_OK;
 }
@@ -185,6 +194,8 @@ void ModbusRTU_SendException(uint8_t function_code, uint8_t exception_code)
     modbus_rtu.tx_buffer[2] = exception_code;
     
     ModbusRTU_SendResponse(modbus_rtu.tx_buffer, 3);
+    
+    // ModbusRTU_SendResponse đã restart UART receive interrupt
 }
 
 /**
@@ -391,15 +402,9 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             return HAL_GPIO_ReadPin(RL_12V_GPIO_Port, RL_12V_Pin);
         case REG_RELAY_CHG_STATUS:
             return HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin);
-        case REG_RELAY_ALL_STATUS:
-            {
-                uint16_t status = 0;
-                if (HAL_GPIO_ReadPin(RL_3V3_GPIO_Port, RL_3V3_Pin)) status |= 0x01;
-                if (HAL_GPIO_ReadPin(RL_5V_GPIO_Port, RL_5V_Pin)) status |= 0x02;
-                if (HAL_GPIO_ReadPin(RL_12V_GPIO_Port, RL_12V_Pin)) status |= 0x04;
-                if (HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin)) status |= 0x08;
-                return status;
-            }
+            
+        case REG_VOLTAGE_THRESHOLD:
+            return (uint16_t)(voltage_threshold * 100);  // Scale by 100 (13.5V -> 1350)
             
         default:
             return 0;
@@ -474,6 +479,14 @@ ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
             HAL_GPIO_WritePin(RL_CHG_GPIO_Port, RL_CHG_Pin, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
             return MODBUS_OK;
             
+        // Relay Control Configuration (writable)
+        case REG_VOLTAGE_THRESHOLD:
+            if (value >= 1000 && value <= 2000) {  // 10.0V to 20.0V range
+                voltage_threshold = (float)value / 100.0f;
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
+            
         // BMS Thresholds (writable)
         case REG_BMS_MAX_CELL_THRESHOLD_1:
         case REG_BMS_MIN_CELL_THRESHOLD_1:
@@ -523,6 +536,11 @@ ModbusStatus_t ModbusRTU_ReadHoldingRegisters(uint8_t *frame, uint16_t length)
         uint16_t reg_value = ModbusRTU_ReadRegister(start_address + i);
         modbus_rtu.tx_buffer[response_index++] = (reg_value >> 8) & 0xFF;  // High byte
         modbus_rtu.tx_buffer[response_index++] = reg_value & 0xFF;         // Low byte
+    }
+    
+    // Add small delay for large responses to ensure stable transmission
+    if (quantity > 50) {
+        HAL_Delay(2);
     }
     
     return ModbusRTU_SendResponse(modbus_rtu.tx_buffer, response_index);
@@ -704,34 +722,33 @@ void ModbusRTU_RxCpltCallback(UART_HandleTypeDef *huart)
     
     uint32_t current_time = HAL_GetTick();
     
-    // Kiểm tra timeout giữa các byte (frame separation)
+    // Kiểm tra frame separation timeout
     if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 5) {
         // Frame mới bắt đầu, reset buffer
         modbus_rtu.rx_length = 0;
+        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
     }
     
-    // Update timestamp và length
     modbus_rtu.last_rx_time = current_time;
     
-    // Byte vừa được nhận vào modbus_rtu.rx_buffer[modbus_rtu.rx_length]
-    modbus_rtu.rx_length++;
-    
     #ifdef DEBUG_MODBUS
-    Debug_Printf("RX[%d]: %02X\n", modbus_rtu.rx_length-1, modbus_rtu.rx_buffer[modbus_rtu.rx_length-1]);
+    Debug_Printf("RX[%d]: %02X\n", modbus_rtu.rx_length, modbus_rtu.rx_buffer[modbus_rtu.rx_length]);
     #endif
     
-    // Continue receiving next byte
-    if (modbus_rtu.rx_length < MODBUS_MAX_FRAME_SIZE) {
-        HAL_StatusTypeDef status = HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[modbus_rtu.rx_length], 1);
-        #ifdef DEBUG_MODBUS
-        if (status != HAL_OK) {
-            Debug_Printf("UART RX Error: %d\n", status);
-        }
-        #endif
+    // Tăng index cho byte tiếp theo
+    modbus_rtu.rx_length++;
+
+    // 🔥 QUAN TRỌNG: Chỉ receive tiếp nếu buffer chưa đầy và UART ready
+    if (modbus_rtu.rx_length < MODBUS_MAX_FRAME_SIZE &&
+        modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
+        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[modbus_rtu.rx_length], 1);
     } else {
-        // Buffer overflow, reset và restart
+        // Buffer overflow, reset
         modbus_rtu.rx_length = 0;
-        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
+        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+        if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
+            HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
+        }
     }
 }
 
@@ -742,12 +759,11 @@ void ModbusRTU_Process(void)
 {
     uint32_t current_time = HAL_GetTick();
     
-    // Kiểm tra xem có frame hoàn chỉnh không (timeout sau byte cuối)
-    // Timeout 3.5 character times = ~0.3ms tại 115200 baud, sử dụng 2ms để an toàn
-    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 2) {
-        // Xử lý frame nếu có ít nhất 4 bytes (minimum frame size)
+    // Kiểm tra frame timeout (5ms)
+    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 5) {
+
+        // Chỉ xử lý nếu frame đủ dài
         if (modbus_rtu.rx_length >= MODBUS_MIN_FRAME_SIZE) {
-            // Debug: In ra frame nhận được (chỉ khi DEBUG_UART được bật)
             #ifdef DEBUG_MODBUS
             Debug_Printf("MB RX[%d]: ", modbus_rtu.rx_length);
             for (int i = 0; i < modbus_rtu.rx_length; i++) {
@@ -755,18 +771,23 @@ void ModbusRTU_Process(void)
             }
             Debug_Printf("\n");
             #endif
-            
+
             ModbusRTU_ProcessFrame(modbus_rtu.rx_buffer, modbus_rtu.rx_length);
         }
         
-        // Reset buffer
+        // 🔥 QUAN TRỌNG: Reset hoàn toàn buffer RX
         modbus_rtu.rx_length = 0;
         memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+        
+        // 🔥 Chỉ restart UART receive nếu cần thiết
+        if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
+            HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
+        }
     }
     
-    // Đảm bảo UART luôn sẵn sàng nhận
-    if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
-        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[modbus_rtu.rx_length], 1);
+    // 🔥 Backup: Đảm bảo UART luôn ready để nhận
+    if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY && modbus_rtu.rx_length == 0) {
+        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
     }
 }
 

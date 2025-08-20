@@ -37,7 +37,7 @@ extern "C" {
 #define MODBUS_TX_DELAY_MS         5
 
 // Uncomment để enable debug output
-// #define DEBUG_MODBUS
+#define DEBUG_MODBUS
 
 // Function Codes
 #define MODBUS_FC_READ_HOLDING_REGISTERS    0x03
@@ -128,7 +128,7 @@ extern "C" {
 #define REG_RELAY_5V_STATUS         0x0051
 #define REG_RELAY_12V_STATUS        0x0052
 #define REG_RELAY_CHG_STATUS        0x0053
-#define REG_RELAY_ALL_STATUS        0x0054
+#define REG_VOLTAGE_THRESHOLD    	0x0054
 
 /* Exported types ------------------------------------------------------------*/
 typedef enum {
@@ -177,6 +177,10 @@ typedef struct {
 
 /* Exported variables --------------------------------------------------------*/
 extern ModbusRTU_t modbus_rtu;
+
+// External variables for relay control
+extern bool relay_power_enabled;
+extern float voltage_threshold;
 
 /* Exported function prototypes ----------------------------------------------*/
 
