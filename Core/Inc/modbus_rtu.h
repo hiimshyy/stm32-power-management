@@ -127,7 +127,7 @@ extern "C" {
 #define REG_RELAY_3V3_STATUS        0x0050
 #define REG_RELAY_5V_STATUS         0x0051
 #define REG_RELAY_12V_STATUS        0x0052
-#define REG_RELAY_CHG_STATUS        0x0053
+#define REG_RELAY_FAUL_STATUS       0x0053
 #define REG_VOLTAGE_THRESHOLD    	0x0054
 
 /* Exported types ------------------------------------------------------------*/
@@ -185,7 +185,7 @@ extern float voltage_threshold;
 /* Exported function prototypes ----------------------------------------------*/
 
 // Initialization and Configuration
-HAL_StatusTypeDef ModbusRTU_Init(UART_HandleTypeDef *huart, uint8_t slave_id);
+HAL_StatusTypeDef ModbusRTU_Init(UART_HandleTypeDef *huart);
 HAL_StatusTypeDef ModbusRTU_SetConfig(ModbusConfig_t *config);
 HAL_StatusTypeDef ModbusRTU_ApplyConfig(void);
 

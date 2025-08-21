@@ -67,10 +67,24 @@ void Error_Handler(void);
 #define RL_3V3_GPIO_Port GPIOA
 #define RL_5V_Pin GPIO_PIN_1
 #define RL_5V_GPIO_Port GPIOA
+#define E2E_RX1_Pin GPIO_PIN_4
+#define E2E_RX1_GPIO_Port GPIOA
+#define E2E_RX2_Pin GPIO_PIN_5
+#define E2E_RX2_GPIO_Port GPIOA
 #define RL_12V_Pin GPIO_PIN_0
 #define RL_12V_GPIO_Port GPIOB
 #define RL_CHG_Pin GPIO_PIN_1
 #define RL_CHG_GPIO_Port GPIOB
+#define INP1_Pin GPIO_PIN_8
+#define INP1_GPIO_Port GPIOA
+#define INP2_Pin GPIO_PIN_15
+#define INP2_GPIO_Port GPIOA
+#define INP3_Pin GPIO_PIN_3
+#define INP3_GPIO_Port GPIOB
+#define INP4_Pin GPIO_PIN_4
+#define INP4_GPIO_Port GPIOB
+#define FAUL_OUT_Pin GPIO_PIN_5
+#define FAUL_OUT_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

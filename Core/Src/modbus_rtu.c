@@ -78,14 +78,14 @@ extern INA219_t ina_12v, ina_5v, ina_3v3;
  * @param slave_id: Modbus slave ID
  * @retval HAL status
  */
-HAL_StatusTypeDef ModbusRTU_Init(UART_HandleTypeDef *huart, uint8_t slave_id)
+HAL_StatusTypeDef ModbusRTU_Init(UART_HandleTypeDef *huart)
 {
     if (huart == NULL) {
         return HAL_ERROR;
     }
     
     modbus_rtu.huart = huart;
-    modbus_rtu.slave_id = slave_id;
+    modbus_rtu.slave_id = modbus_config.slave_id;
     modbus_rtu.frame_received = false;
     modbus_rtu.rx_length = 0;
     modbus_rtu.tx_length = 0;
@@ -224,29 +224,23 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             
         // DalyBMS Status Registers
         case REG_BMS_VOLTAGE:
-            return (uint16_t)(bms_data.voltage_v * 10);
+            return bms_data.voltage;
         case REG_BMS_CURRENT:
-            return (uint16_t)(bms_data.current_ma / 100);  // Convert mA to A*10
+            return bms_data.current;
         case REG_BMS_SOC:
-            return (uint16_t)(bms_data.soc_percent * 10);
-            
-        // Test registers with fixed values
-        case 0x9999:
-            return 0x1234;  // Test register
-        case 0x9998:
-            return HAL_GetTick() & 0xFFFF;  // Tick counter
+            return bms_data.soc;
         case REG_BMS_MAX_CELL_V:
-            return (uint16_t)(bms_data.max_cell_v * 1000);  // mV
+            return bms_data.max_cell;
         case REG_BMS_MIN_CELL_V:
-            return (uint16_t)(bms_data.min_cell_v * 1000);  // mV
+            return bms_data.min_cell;
         case REG_BMS_MAX_CELL_NUM:
-            return bms_data.max_cell_voltage_num;
+            return bms_data.max_cell_index;
         case REG_BMS_MIN_CELL_NUM:
-            return bms_data.min_cell_voltage_num;
+            return bms_data.min_cell_index;
         case REG_BMS_CELL_DIFF:
-            return (uint16_t)((bms_data.max_cell_v - bms_data.min_cell_v) * 1000);
+            return bms_data.cell_diff;
         case REG_BMS_TEMPERATURE:
-            return (uint16_t)bms_data.temperature_average;
+            return bms_data.temperature_avr;
         case REG_BMS_CONNECTION_STATUS:
             return bms_data.connection_status ? 1 : 0;
         case REG_BMS_CHARGE_DISCHARGE_STATUS:
@@ -258,7 +252,7 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
         case REG_BMS_LIFE_CYCLE:
             return bms_data.bms_life_cycle;
         case REG_BMS_RESIDUAL_CAPACITY:
-            return (uint16_t)(bms_data.residual_capacity_mAh / 10);  // mAh/10
+            return bms_data.residual_capacity_mAh;
         case REG_BMS_NUM_CELLS:
             return bms_data.num_cells;
         case REG_BMS_NUM_TEMP_SENSORS:
@@ -279,7 +273,7 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             {
                 uint8_t cell_index = address - REG_BMS_CELL_VOLTAGE_START;
                 if (cell_index < bms_data.num_cells) {
-                    return (uint16_t)(bms_data.cell_voltage_mv[cell_index]);  // Already in mV
+                    return bms_data.cell_voltage_mv[cell_index];  // Already in mV
                 }
                 return 0;
             }
@@ -289,7 +283,7 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             {
                 uint8_t temp_index = address - REG_BMS_TEMPERATURE_START;
                 if (temp_index < bms_data.num_temp_sensors) {
-                    return (uint16_t)bms_data.temperature_c[temp_index];
+                    return bms_data.temperature_c[temp_index];
                 }
                 return 0;
             }
@@ -306,17 +300,25 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             
         // BMS Thresholds
         case REG_BMS_MAX_CELL_THRESHOLD_1:
-            return (uint16_t)(bms_data.max_cell_threshold_1 * 10);
+            return bms_data.max_cell_threshold_1;
         case REG_BMS_MIN_CELL_THRESHOLD_1:
-            return (uint16_t)(bms_data.min_cell_threshold_1 * 10);
+            return bms_data.min_cell_threshold_1;
+        case REG_BMS_MAX_CELL_THRESHOLD_2:
+        	return bms_data.max_cell_threshold_2;
+        case REG_BMS_MIN_CELL_THRESHOLD_2:
+			return bms_data.min_cell_threshold_2;
         case REG_BMS_MAX_PACK_THRESHOLD_1:
-            return (uint16_t)(bms_data.max_pack_threshold_1 * 10);
+            return bms_data.max_pack_threshold_1;
         case REG_BMS_MIN_PACK_THRESHOLD_1:
-            return (uint16_t)(bms_data.min_pack_threshold_1 * 10);
+            return bms_data.min_pack_threshold_1;
+        case REG_BMS_MAX_PACK_THRESHOLD_2:
+        	return bms_data.max_pack_threshold_2;
+        case REG_BMS_MIN_PACK_THRESHOLD_2:
+        	return bms_data.min_pack_threshold_2;
             
         // SK60X Data Registers
         case REG_SK60X_V_SET:
-            return sk60x_data.v_set;
+			return 1680;
         case REG_SK60X_I_SET:
             return sk60x_data.i_set;
         case REG_SK60X_V_OUT:
@@ -344,7 +346,7 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
         case REG_SK60X_CHARGE_RELAY:
             return HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin);
         case REG_SK60X_CHARGE_STATE:
-            return 0;  // TODO: Implement charge state logic
+            return 0;
             
         // INA219 Sensor Registers
         case REG_INA219_V_OUT_12V:
@@ -400,9 +402,8 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             return HAL_GPIO_ReadPin(RL_5V_GPIO_Port, RL_5V_Pin);
         case REG_RELAY_12V_STATUS:
             return HAL_GPIO_ReadPin(RL_12V_GPIO_Port, RL_12V_Pin);
-        case REG_RELAY_CHG_STATUS:
-            return HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin);
-            
+        case REG_RELAY_FAUL_STATUS:
+        	return HAL_GPIO_ReadPin(FAUL_OUT_GPIO_Port, FAUL_OUT_Pin);
         case REG_VOLTAGE_THRESHOLD:
             return (uint16_t)(voltage_threshold * 100);  // Scale by 100 (13.5V -> 1350)
             

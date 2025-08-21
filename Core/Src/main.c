@@ -128,11 +128,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
   Debug_Init();
-  Debug_SetMode(DEBUG_USB); // Enable USB debug để xem Modbus log
-  ModbusRTU_Init(&huart2, 0x01);  // Khởi tạo Modbus RTU trên UART2 với slave ID = 1
-  Debug_Printf("=== SYSTEM BOOT ===\r\n");
-  Debug_Printf("Firmware Version: 1.0\r\n");
-  Debug_Printf("Modbus Slave ID: %d\r\n", 0x01);
+  Debug_SetMode(DEBUG_NONE);
+  ModbusRTU_Init(&huart2);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -169,7 +166,7 @@ int main(void)
   ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
 
   /* definition and creation of modbusTask */
-  osThreadDef(modbusTask, StartModbusTask, osPriorityNormal, 0, 512);
+  osThreadDef(modbusTask, StartModbusTask, osPriorityNormal, 0, 128);
   modbusTaskHandle = osThreadCreate(osThread(modbusTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -454,21 +451,17 @@ void StartDefaultTask(void const * argument)
     {
     	Debug_USB_Process();
 		// Điều khiển relay dựa trên điện áp BMS với hysteresis
-		if (!relay_power_enabled && bms_data.voltage_v > voltage_threshold) {
+		if (!relay_power_enabled && bms_data.voltage > voltage_threshold) {
 			// Bật relay power rails khi voltage > 13.5V
 			HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_SET);
 			HAL_GPIO_WritePin(GPIOB, RL_12V_Pin, GPIO_PIN_SET);
 			relay_power_enabled = true;
-		} else if (relay_power_enabled && bms_data.voltage_v < voltage_threshold) {
+		} else if (relay_power_enabled && bms_data.voltage < voltage_threshold) {
 			// Tắt relay power rails khi voltage < 13.0V
 			HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOB, RL_12V_Pin, GPIO_PIN_RESET);
 			relay_power_enabled = false;
 		}
-		
-		// Charge relay luôn bật (độc lập với voltage)
-		HAL_GPIO_WritePin(GPIOB, RL_CHG_Pin, GPIO_PIN_SET);
-		
 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 		
 		osDelay(500);
@@ -669,10 +662,10 @@ void StartModbusTask(void const * argument)
   {
     // Xử lý Modbus RTU
     ModbusRTU_Process();
-    
+
     // Cập nhật dữ liệu từ các nguồn
     ModbusRTU_UpdateDataFromSources();
-    
+
     osDelay(1);  // 1ms delay để xử lý nhanh hơn
   }
   /* USER CODE END StartModbusTask */
