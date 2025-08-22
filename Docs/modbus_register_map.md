@@ -21,14 +21,14 @@ This document defines the Modbus RTU register map used for communication between
 
 | Address  | Name | Unit | Description | Data Type | Scaling | Access |
 |----------|------|------|-------------|-----------|---------|--------|
-| `0x0000` | voltage_v | V | Voltage of battery pack | `uint8` | /10.0 | Read Only |
-| `0x0001` | current_a | A | Current of battery pack | `uint8` | /10.0 | Read Only |
-| `0x0002` | soc_percent | % | State of Charge | `uint8` | /10.0 | Read Only |
-| `0x0003` | max_cell_v | V | Maximum voltage among cells | `uint8` | /10.0 | Read Only |
-| `0x0004` | min_cell_v | V | Minimum voltage among cells | `uint8` | /10.0 | Read Only |
-| `0x0005` | max_cell_voltage_num |-| Index of max voltage cell | `uint8` | /10.0 | Read Only |
-| `0x0006` | min_cell_voltage_num |-| Index of min voltage cell | `uint8` | /10.0 | Read Only |
-| `0x0007` | cell_diff | mV | Voltage difference between cells | `uint8` | /10.0 | Read Only |
+| `0x0000` | voltage_v | V | Voltage of battery pack | `uint16` | /10.0 | Read Only |
+| `0x0001` | current_a | A | Current of battery pack | `uint16` | /10.0 | Read Only |
+| `0x0002` | soc_percent | % | State of Charge | `uint16` | /10.0 | Read Only |
+| `0x0003` | max_cell_v | mV | Maximum voltage among cells | `uint16` | - | Read Only |
+| `0x0004` | min_cell_v | mV | Minimum voltage among cells | `uint16` | - | Read Only |
+| `0x0005` | max_cell_index |-| Index of max voltage cell | `uint8` | - | Read Only |
+| `0x0006` | min_cell_index |-| Index of min voltage cell | `uint8` | - | Read Only |
+| `0x0007` | cell_diff | mV | Voltage difference between cells | `uint8` | - | Read Only |
 | `0x0008` | temperature | °C | Average temperature | `uint8` | - | Read Only |
 | `0x0009` | connection_status |-| BMS Connection Status (0/1 = NG/OK) | `bool` |-| Read Only |
 | `0x000A` | charge_discharge_status|-| Charge/discharge status flags | `uint8` |-| Read Only  |
@@ -36,7 +36,7 @@ This document defines the Modbus RTU register map used for communication between
 | `0x000C` | discharge_mos |-| Discharge MOSFET status | `bool` |-| Read Only |
 | `0x000D` | bms_life_cycle | count | Number of BMS power cycles | `uint8` |-| Read Only |
 | `0x000E` | residual_capacity_mAh | mAh | Remaining battery capacity | `uint8` |-| Read Only |
-| `0x000F` | num_cells | count | Number of battery cells | `uint8` || Read Only  |
+| `0x000F` | num_cells | count | Number of battery cells | `uint8` | - | Read Only  |
 | `0x0010` | num_temp_sensors | count | Number of temperature sensors | `uint8 ` |-| Read Only |
 | `0x0011` | charge_status |-| Charging in progress (1 = Yes) | `bool` |-| Read Only |
 | `0x0012` | discharge_status |-| Discharging in progress (1 = Yes) | `bool` |-| Read Only |
@@ -46,14 +46,14 @@ This document defines the Modbus RTU register map used for communication between
 | `0x001C–21` | cell_balance_state[6] | bit | Per-cell balancing status | `bool[6]` |-| Read Only |
 | `0x0022` | cell_balance_active |-| Global balancing status | `bool` |-| Read Only |
 | `0x0023` | fault_flags | bitmask | Fault status flags | `uint8` |-| Read Only |
-| `0x0024` | max_cell_threshold_1  | V | Max cell voltage threshold 1 | `uint8` | /10.0 | Read/Write |
-| `0x0025` | min_cell_threshold_1  | V | Min cell voltage threshold 1 | `uint8` | /10.0 | Read/Write |
-| `0x0026` | max_cell_threshold_2  | V | Max cell voltage threshold 2 | `uint8` | /10.0 | Read/Write |
-| `0x0027` | min_cell_threshold_2  | V | Min cell voltage threshold 2 | `uint8` | /10.0 | Read/Write |
-| `0x0028` | max_pack_threshold_1  | V | Max pack voltage threshold 1 | `uint8` | /10.0 | Read/Write |
-| `0x0029` | min_pack_threshold_1  | V | Min pack voltage threshold 1 | `uint8` | /10.0 | Read/Write |
-| `0x002A` | max_pack_threshold_2  | V | Max pack voltage threshold 2 | `uint8` | /10.0 | Read/Write |
-| `0x002B` | min_pack_threshold_2  | V | Min pack voltage threshold 2 | `uint8` | /10.0 | Read/Write |
+| `0x0024` | max_cell_threshold_1  | mV | Max cell voltage threshold 1 | `uint16` | - | Read/Write |
+| `0x0025` | min_cell_threshold_1  | mV | Min cell voltage threshold 1 | `uint16` | - | Read/Write |
+| `0x0026` | max_cell_threshold_2  | mV | Max cell voltage threshold 2 | `uint16` | - | Read/Write |
+| `0x0027` | min_cell_threshold_2  | mV | Min cell voltage threshold 2 | `uint16` | - | Read/Write |
+| `0x0028` | max_pack_threshold_1  | mV | Max pack voltage threshold 1 | `uint16` | - | Read/Write |
+| `0x0029` | min_pack_threshold_1  | mV | Min pack voltage threshold 1 | `uint16` | - | Read/Write |
+| `0x002A` | max_pack_threshold_2  | mV | Max pack voltage threshold 2 | `uint16` | - | Read/Write |
+| `0x002B` | min_pack_threshold_2  | mV | Min pack voltage threshold 2 | `uint16` | - | Read/Write |
 
 ---
 
@@ -73,7 +73,9 @@ This document defines the Modbus RTU register map used for communication between
 | `0x003A` | s_use | s | Time used – seconds | `uint8` | - | Read Only |
 | `0x003B` | status |-| Operational status | `bool` | - | Read Only |
 | `0x003C` | on_off |-| Output ON/OFF state | `bool` | - | Read/Write |
-| `0x003D` | charge_request |-| 0 = NOT, 1 = CHARGE| `bool` | - | Read/Write |
+| `0x003D` | charge_relay |-| 0 = NOT, 1 = CHARGE| `bool` | - | Read Only |
+| `0x003E` | charge_state |-| 0 = IDLE, 1 = WAITING, 2 = CHARGE | `uint16` | - | Read Only |
+| `0x003F` | charge_request |-| 0 = NOT, 1 = REQUEST| `bool` | - | Read/Write |
 
 
 
@@ -94,10 +96,11 @@ This document defines the Modbus RTU register map used for communication between
 ### 0x0049 - Relay state
 | Address | Name | Unit | Description | Data Type | Scaling | Access    |
 |---------|------|------|-------------|-----------|---------|-----------|
-| `0x0049` | rl_12V | - | Voltage of 12V output | `uint8` | /10.0 | Read Only |
-| `0x004A` | rl_5V | - | Voltage of 5V output | `uint8` | /10.0 | Read Only |
-| `0x004B` | rl_3V3 | - | Voltage of 3.3V output | `uint8`  | /10.0 | Read Only |
-| `0x004C` | rl_charge | - | Voltage of 3.3V output | `uint8`  | /10.0 | Read Only |
+| `0x0049` | rl_12V | - | State of 12V relay | `uint8` | - | Read Only |
+| `0x004A` | rl_5V | - | State of 5V relay | `uint8` | - | Read Only |
+| `0x004B` | rl_3V3 | - | State of 3V3 relay | `uint8`  | - | Read Only |
+| `0x004C` | rl_faul | - | State of Faul relay | `uint8` | - | Read Only |
+| `0x004D` | use_v_ths | - | Setting voltage usage threshold | `uint16`  | /100.0 | Read/Write |
 
 
 
