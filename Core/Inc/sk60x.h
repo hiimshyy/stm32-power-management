@@ -23,10 +23,10 @@
 #define WRITE_REGISTERS 0x06
 #define REQUEST_FRAME_SIZE 8
 #define RESPONSE_FRAME_SIZE 42
-#define SK60X_MAX_VOLTAGE 36.0f
-#define SK60X_MAX_CURRENT 5.0f
-#define SK60X_MIN_VOLTAGE 6.0f
-#define SK60X_MIN_CURRENT 0.0f
+#define SK60X_MAX_VOLTAGE 3600
+#define SK60X_MAX_CURRENT 500
+#define SK60X_MIN_VOLTAGE 600
+#define SK60X_MIN_CURRENT 0
 
 extern UART_HandleTypeDef huart3;
 
@@ -61,9 +61,8 @@ extern uint8_t _sk60_tx_buffer[REQUEST_FRAME_SIZE];
 
 bool SK60X_Read_Data();
 bool SK60X_Fan_Control(bool enable);
-bool SK60X_Check_Connection(void);
-void SK60X_Set_On_Off(bool on);
-void SK60X_Set_Voltage(float voltage);
-void SK60X_Set_Current(float current);
+bool SK60X_Set_On_Off(uint16_t  on_off);
+bool SK60X_Set_Voltage(uint16_t voltage);
+bool SK60X_Set_Current(uint16_t current);
 
 #endif

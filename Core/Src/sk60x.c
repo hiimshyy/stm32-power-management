@@ -11,7 +11,7 @@
 #include "sk60x.h"
 #include <string.h>
 
-SK60X_Data sk60x_data;
+SK60X_Data sk60x_data = {0};
 uint8_t _sk60_rx_buffer[RESPONSE_FRAME_SIZE];
 uint8_t _sk60_tx_buffer[REQUEST_FRAME_SIZE];
 
@@ -65,8 +65,9 @@ bool SK60X_Read_Data()
 
     if(HAL_UART_Transmit(&huart3, _sk60_tx_buffer, REQUEST_FRAME_SIZE, 100) != HAL_OK)
     	return false;
-    if(HAL_UART_Receive(&huart3, _sk60_rx_buffer, sizeof(_sk60_rx_buffer), 500) != HAL_OK)
+    if(HAL_UART_Receive(&huart3, _sk60_rx_buffer, RESPONSE_FRAME_SIZE, 500) != HAL_OK)
     	return false;
+
 //    Debug_Printf("<SK60x> - Received:\n");
 //    for (size_t i = 0; i < RESPONSE_FRAME_SIZE; i++)
 //	{
@@ -93,81 +94,45 @@ bool SK60X_Read_Data()
     return true;
 }
 
-bool SK60X_Check_Connection()
+bool SK60X_Set_On_Off(uint16_t on_off)
 {
-	memset(_sk60_tx_buffer, 0x00, REQUEST_FRAME_SIZE);
-	_sk60_tx_buffer[0] = SK60X_ADDR;        // Device address
-	_sk60_tx_buffer[1] = READ_REGISTERS;    // Function code: Read Holding Registers
-	_sk60_tx_buffer[2] = START_ADDRESS >> 8;
-	_sk60_tx_buffer[3] = START_ADDRESS & 0xFF;
-	_sk60_tx_buffer[4] = (QUANTITY >> 8) & 0xFF; // Number of registers to read (high byte)
-	_sk60_tx_buffer[5] = QUANTITY & 0xFF;        // Number of registers to read (low byte)
-
-	uint16_t crc = Calculate_CRC(_sk60_tx_buffer, 6);
-	_sk60_tx_buffer[6] = crc & 0xFF;
-	_sk60_tx_buffer[7] = crc >> 8;
-
-	if(HAL_UART_Transmit(&huart3, _sk60_tx_buffer, REQUEST_FRAME_SIZE, 100) != HAL_OK)
+	if (on_off != 0 && on_off != 1) 
 	{
-		Debug_Printf("SK60X Connection Check failed to send request\n");
-		return false; // Failed to send request
+		return false; // Invalid on/off value
 	}
-
-	if(HAL_UART_Receive(&huart3, _sk60_rx_buffer, RESPONSE_FRAME_SIZE, 500) != HAL_OK)
+	if(SK60X_Send_Command(SET_ON_OFF, on_off))
 	{
-		Debug_Printf("SK60X Connection Check failed to receive response\n");
-		return false; // Failed to receive response
-	}
-
-	return true; // Connection is valid if we received a response
-}
-
-void SK60X_Set_On_Off(bool on)
-{
-	uint16_t value = on ? 0x0001 : 0x0000; // Convert boolean to register value
-	if(SK60X_Send_Command(SET_ON_OFF, value))
-	{
-		Debug_Printf("SK60X Set On/Off command sent successfully\n");
+		return true;
 	}
 	else
-	{
-		Debug_Printf("SK60X Set On/Off command failed\n");
-		return; // Command failed
-	}
+		return false;
 }
 
-void SK60X_Set_Voltage(float voltage)
+bool SK60X_Set_Voltage(uint16_t voltage)
 {
 	if (voltage < SK60X_MIN_VOLTAGE || voltage > SK60X_MAX_VOLTAGE) {
-		Debug_Printf("Invalid voltage value: %f\n", voltage);
-		return; // Invalid voltage value
+		return false;
 	}
-
-	uint16_t value = (uint16_t)(voltage * 100); // Convert to integer representation
-	if(SK60X_Send_Command(SET_VOLTAGE, value))
+	if(SK60X_Send_Command(SET_VOLTAGE, voltage))
 	{
-		Debug_Printf("SK60X Set Voltage command sent successfully\n");
+		return true;
 	}
 	else
-	{
-		Debug_Printf("SK60X Set Voltage command failed\n");
-	}
+		return false;
 }
 
-void SK60X_Set_Current(float current)
+bool SK60X_Set_Current(uint16_t current)
 {
 	if (current < SK60X_MIN_CURRENT || current > SK60X_MAX_CURRENT) {
-		Debug_Printf("Invalid current value: %f\n", current);
-		return; // Invalid current value
+		return false;
 	}
 
-	uint16_t value = (uint16_t)(current * 100); // Convert to integer representation
-	if(SK60X_Send_Command(SET_CURRENT, value))
+	if(SK60X_Send_Command(SET_CURRENT, current))
 	{
-		Debug_Printf("SK60X Set Current command sent successfully\n");
+		return true;
 	}
 	else
 	{
-		Debug_Printf("SK60X Set Current command failed\n");
+		return false;
 	}
 }

@@ -32,51 +32,50 @@ extern UART_HandleTypeDef huart1; // Define your UART handle here
 
 typedef struct {
 	// data form 0x59
-	float  max_cell_threshold_1;
-	float  min_cell_threshold_1;
-	float  max_cell_threshold_2;
-	float  min_cell_threshold_2;
+	uint16_t  max_cell_threshold_1;
+	uint16_t  min_cell_threshold_1;
+	uint16_t  max_cell_threshold_2;
+	uint16_t  min_cell_threshold_2;
 
 	// data form 0x5A
-	float  max_pack_threshold_1;
-	float  min_pack_threshold_1;
-	float  max_pack_threshold_2;
-	float  min_pack_threshold_2;
+	uint16_t  max_pack_threshold_1;
+	uint16_t  min_pack_threshold_1;
+	uint16_t  max_pack_threshold_2;
+	uint16_t  min_pack_threshold_2;
 
 	// data form 0x90
-    float  voltage_v;
-    float  current_ma;
-    float  soc_percent;
+    uint16_t  voltage;
+    int16_t  current;
+    uint16_t  soc;
 
     // data form 0x91
-    float  	max_cell_v;
-    float  	min_cell_v;
-    uint8_t max_cell_voltage_num;
-    uint8_t min_cell_voltage_num;
-    uint8_t cell_diff;
+    uint16_t  	max_cell;
+    uint16_t  	min_cell;
+    uint8_t 	max_cell_index;
+    uint8_t 	min_cell_index;
+    uint8_t 	cell_diff;
 
     // data form 0x92
 //    float max_temperature_c;
 //    float min_temperature_c;
-    float temperature_average;
+    uint8_t temperature_avr;
 
     // data form 0x93
     uint8_t charge_discharge_status;
     bool    charge_mos;
     bool    discharge_mos;
     uint8_t bms_life_cycle;
-    float 	residual_capacity_mAh;
+    uint16_t 	residual_capacity_mAh;
 
     // data form 0x94
     uint8_t  num_cells;
     uint8_t  num_temp_sensors;
     bool	 charge_status;
     bool	 discharge_status;
-//    bool	 dIO[8];
     uint8_t  charge_discharge_cycle;
 
     // data form 0x95
-    float cell_voltage_mv[48];
+    uint16_t cell_voltage_mv[48];
 
     // data form 0x96
     uint8_t temperature_c[16];
