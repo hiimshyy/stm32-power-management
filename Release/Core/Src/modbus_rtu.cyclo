@@ -1,0 +1,16 @@
+../Core/Src/modbus_rtu.c:80:19:ModbusRTU_Init	2
+../Core/Src/modbus_rtu.c:106:10:ModbusRTU_CalculateCRC	3
+../Core/Src/modbus_rtu.c:130:6:ModbusRTU_CheckCRC	2
+../Core/Src/modbus_rtu.c:148:16:ModbusRTU_SendResponse	3
+../Core/Src/modbus_rtu.c:180:6:ModbusRTU_SendException	1
+../Core/Src/modbus_rtu.c:196:10:ModbusRTU_ReadRegister	82
+../Core/Src/modbus_rtu.c:413:16:ModbusRTU_WriteRegister	27
+../Core/Src/modbus_rtu.c:515:16:ModbusRTU_ReadHoldingRegisters	5
+../Core/Src/modbus_rtu.c:557:16:ModbusRTU_WriteSingleRegister	4
+../Core/Src/modbus_rtu.c:595:16:ModbusRTU_WriteMultipleRegisters	8
+../Core/Src/modbus_rtu.c:657:16:ModbusRTU_ProcessFrame	10
+../Core/Src/modbus_rtu.c:719:6:ModbusRTU_RxCpltCallback	7
+../Core/Src/modbus_rtu.c:754:6:ModbusRTU_Process	6
+../Core/Src/modbus_rtu.c:778:19:ModbusRTU_ApplyConfig	1
+../Core/Src/modbus_rtu.c:794:10:ModbusRTU_BaudrateFromCode	2
+../Core/Src/modbus_rtu.c:810:6:ModbusRTU_UpdateDataFromSources	1

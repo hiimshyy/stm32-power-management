@@ -1,0 +1,7 @@
+../Core/Src/charge_control.c:61:6:ChargeControl_CheckSK60XConditions	8	static
+../Core/Src/charge_control.c:76:6:ChargeControl_SetChargeRelay	0	static
+../Core/Src/charge_control.c:24:19:ChargeControl_Init	16	static
+../Core/Src/charge_control.c:43:6:ChargeControl_HandleRequest	0	static
+../Core/Src/charge_control.c:90:6:ChargeControl_GetChargeRelayStatus	0	static
+../Core/Src/charge_control.c:99:9:ChargeControl_GetChargeStateForModbus	0	static
+../Core/Src/charge_control.c:113:15:ChargeControl_Process	16	static

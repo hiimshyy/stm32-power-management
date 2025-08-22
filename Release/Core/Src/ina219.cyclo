@@ -1,0 +1,7 @@
+../Core/Src/ina219.c:33:26:INA219_ReadRegister	3
+../Core/Src/ina219.c:18:26:INA219_WriteRegister.isra	1
+../Core/Src/ina219.c:51:6:INA219_Init	1
+../Core/Src/ina219.c:74:19:INA219_Read_Bus_Voltage	2
+../Core/Src/ina219.c:89:19:INA219_Read_Shunt_Voltage	2
+../Core/Src/ina219.c:105:19:INA219_Read_Current	2
+../Core/Src/ina219.c:121:19:INA219_Read_Power	2
