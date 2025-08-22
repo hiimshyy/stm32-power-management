@@ -73,8 +73,7 @@ This document defines the Modbus RTU register map used for communication between
 | `0x003A` | s_use | s | Time used – seconds | `uint8` | - | Read Only |
 | `0x003B` | status |-| Operational status | `bool` | - | Read Only |
 | `0x003C` | on_off |-| Output ON/OFF state | `bool` | - | Read/Write |
-| `0x003D` | charge_relay |-| 1 = Enable , 0 = Disable | `bool` | - | Read/Write |
-| `0x003E` | charge_state |-| 0 = NOT, 1 = PREPARE, 2 = READY | `bool` | - | Read Only |
+| `0x003D` | charge_request |-| 0 = NOT, 1 = CHARGE| `bool` | - | Read/Write |
 
 
 
@@ -84,13 +83,23 @@ This document defines the Modbus RTU register map used for communication between
 |---------|------|------|-------------|-----------|---------|-----------|
 | `0x0040` | v_out_12V | V | Voltage of 12V output | `uint8` | /10.0 | Read Only |
 | `0x0041` | i_out_12V | A | Current of 12V output | `uint8` | /10.0 | Read Only |
-| `0x0041` | p_out_12V | W | Power of 12V output | `uint8` | /10.0 | Read Only |
-| `0x0042` | v_out_5V | V | Voltage of 5V output | `uint8` | /10.0 | Read Only |
-| `0x0043` | i_out_5v | A | Current of 5V output | `uint8`  | /10.0 | Read Only |
-| `0x0041` | p_out_5V | W | Power of 5V output | `uint8` | /10.0 | Read Only |
-| `0x0044` | v_out_3V3 | V | Voltage of 3.3V output | `uint8`  | /10.0 | Read Only |
-| `0x0045` | i_out_3V3 | A | Current of 3.3V output  | `uint8`  | /10.0 | Read Only |
-| `0x0041` | p_out_3V3 | W | Power of 3.3V output | `uint8` | /10.0 | Read Only |
+| `0x0042` | p_out_12V | W | Power of 12V output | `uint8` | /10.0 | Read Only |
+| `0x0043` | v_out_5V | V | Voltage of 5V output | `uint8` | /10.0 | Read Only |
+| `0x0044` | i_out_5v | A | Current of 5V output | `uint8`  | /10.0 | Read Only |
+| `0x0045` | p_out_5V | W | Power of 5V output | `uint8` | /10.0 | Read Only |
+| `0x0046` | v_out_3V3 | V | Voltage of 3.3V output | `uint8`  | /10.0 | Read Only |
+| `0x0047` | i_out_3V3 | A | Current of 3.3V output  | `uint8`  | /10.0 | Read Only |
+| `0x0048` | p_out_3V3 | W | Power of 3.3V output | `uint8` | /10.0 | Read Only |
+
+### 0x0049 - Relay state
+| Address | Name | Unit | Description | Data Type | Scaling | Access    |
+|---------|------|------|-------------|-----------|---------|-----------|
+| `0x0049` | rl_12V | - | Voltage of 12V output | `uint8` | /10.0 | Read Only |
+| `0x004A` | rl_5V | - | Voltage of 5V output | `uint8` | /10.0 | Read Only |
+| `0x004B` | rl_3V3 | - | Voltage of 3.3V output | `uint8`  | /10.0 | Read Only |
+| `0x004C` | rl_charge | - | Voltage of 3.3V output | `uint8`  | /10.0 | Read Only |
+
+
 
 ---
 
