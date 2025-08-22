@@ -20,11 +20,6 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "usb_device.h"
-#include "daly_bms.h"
-#include "sk60x.h"
-#include "debugger.h"
-#include "ina219.h"
-#include "modbus_rtu.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -59,11 +54,9 @@ osThreadId bmsTaskHandle;
 osThreadId sk60xTaskHandle;
 osThreadId ina219TaskHandle;
 osThreadId modbusTaskHandle;
-
-INA219_t ina_12v, ina_5v, ina_3v3;
-
 /* USER CODE BEGIN PV */
 // Variables for relay control logic (accessible from Modbus)
+INA219_t ina_12v, ina_5v, ina_3v3;
 bool relay_power_enabled = false;
 float voltage_threshold = 13.5f;
 /* USER CODE END PV */
@@ -79,7 +72,7 @@ void StartDefaultTask(void const * argument);
 void StartBMSTask(void const * argument);
 void StartSK60xTask(void const * argument);
 void StartTaskINA219(void const * argument);
-void StartModbusTask(void const * argument);
+void StartTaskModbus(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -123,12 +116,10 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_I2C1_Init();
-  /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
-  Debug_Init();
-  Debug_SetMode(DEBUG_NONE);
+//  Debug_Init();
+//  Debug_SetMode(DEBUG_NONE);
   ModbusRTU_Init(&huart2);
   /* USER CODE END 2 */
 
@@ -162,11 +153,11 @@ int main(void)
   sk60xTaskHandle = osThreadCreate(osThread(sk60xTask), NULL);
 
   /* definition and creation of ina219Task */
-  osThreadDef(ina219Task, StartTaskINA219, osPriorityNormal, 0, 256);
+  osThreadDef(ina219Task, StartTaskINA219, osPriorityNormal, 0, 128);
   ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
 
   /* definition and creation of modbusTask */
-  osThreadDef(modbusTask, StartModbusTask, osPriorityNormal, 0, 128);
+  osThreadDef(modbusTask, StartTaskModbus, osPriorityNormal, 0, 128);
   modbusTaskHandle = osThreadCreate(osThread(modbusTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -393,7 +384,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, RL_12V_Pin|RL_CHG_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, RL_12V_Pin|RL_CHG_Pin|FAUL_OUT_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : LED_Pin LED_FAULT_Pin LED_UART_Pin */
   GPIO_InitStruct.Pin = LED_Pin|LED_FAULT_Pin|LED_UART_Pin;
@@ -409,11 +400,23 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : RL_12V_Pin RL_CHG_Pin */
-  GPIO_InitStruct.Pin = RL_12V_Pin|RL_CHG_Pin;
+  /*Configure GPIO pins : RL_12V_Pin RL_CHG_Pin FAUL_OUT_Pin */
+  GPIO_InitStruct.Pin = RL_12V_Pin|RL_CHG_Pin|FAUL_OUT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : INP1_Pin INP2_Pin */
+  GPIO_InitStruct.Pin = INP1_Pin|INP2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : INP3_Pin INP4_Pin */
+  GPIO_InitStruct.Pin = INP3_Pin|INP4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -429,7 +432,6 @@ static void MX_GPIO_Init(void)
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    // Xử lý callback cho Modbus RTU
     ModbusRTU_RxCpltCallback(huart);
 }
 
@@ -444,12 +446,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
-
-    /* USER CODE BEGIN 5 */
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
+  /* USER CODE BEGIN 5 */
     /* Infinite loop */
     for(;;)
     {
-    	Debug_USB_Process();
+//    	Debug_USB_Process();
 		// Điều khiển relay dựa trên điện áp BMS với hysteresis
 		if (!relay_power_enabled && bms_data.voltage > voltage_threshold) {
 			// Bật relay power rails khi voltage > 13.5V
@@ -575,26 +578,8 @@ void StartSK60xTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-	  if (SK60X_Read_Data())
-	  {
-		  Debug_Printf("<SK60x> - Voltage set: %d V\n", sk60x_data.v_set);
-		  Debug_Printf("<SK60x> - Current set: %d A\n", sk60x_data.i_set);
-		  Debug_Printf("<SK60x> - Voltage: %d V\n", sk60x_data.v_out);
-		  Debug_Printf("<SK60x> - Current: %d A\n", sk60x_data.i_out);
-		  Debug_Printf("<SK60x> - Power: %d W\n", sk60x_data.p_out);
-		  Debug_Printf("<SK60x> - Voltage in: %d V\n", sk60x_data.v_in);
-		  Debug_Printf("<SK60x> - Current in: %d V\n", sk60x_data.i_in);
-		  Debug_Printf("<SK60x> - Temperature: %d C\n", sk60x_data.temp);
-		  Debug_Printf("<SK60x> - Volage lock: %d \n", sk60x_data.lock_v);
-		  Debug_Printf("<SK60x> - Time used: %d h %d m %d s\n", sk60x_data.h_use, sk60x_data.m_use, sk60x_data.s_use);
-		  Debug_Printf("<SK60x> - Is using: %d \n", sk60x_data.status);
-		  Debug_Printf("<SK60x> - Status: %d\n", sk60x_data.on_off);
-	  }
-	  else
-	  {
-		  Debug_Printf("<SK60x> - Failed to read data!\n");
-	}
-    osDelay(500);
+	  ChargeControl_Process();
+	  osDelay(1);
   }
   /* USER CODE END StartSK60xTask */
 }
@@ -613,62 +598,31 @@ void StartTaskINA219(void const * argument)
   INA219_Init(&ina_5v,  &hi2c1, INA219_ADDR_5V,  0.1f, 3.0f);
   INA219_Init(&ina_3v3, &hi2c1, INA219_ADDR_3V3, 0.1f, 3.0f);
 
-  float v, i, p;
-  HAL_StatusTypeDef ret;
   /* Infinite loop */
   for(;;)
   {
-    // Đọc và in giá trị INA219 12V
-    ret = INA219_Read_Bus_Voltage(&ina_12v, &v);
-    if(ret == HAL_OK) Debug_Printf("INA219-12V: V=%.3fV ", v);
-    ret = INA219_Read_Current(&ina_12v, &i);
-    if(ret == HAL_OK) Debug_Printf("I=%.3fA ", i);
-    ret = INA219_Read_Power(&ina_12v, &p);
-    if(ret == HAL_OK) Debug_Printf("P=%.3fW\n", p);
-
-    // Đọc và in giá trị INA219 5V
-    ret = INA219_Read_Bus_Voltage(&ina_5v, &v);
-    if(ret == HAL_OK) Debug_Printf("INA219-5V: V=%.3fV ", v);
-    ret = INA219_Read_Current(&ina_5v, &i);
-    if(ret == HAL_OK) Debug_Printf("I=%.3fA ", i);
-    ret = INA219_Read_Power(&ina_5v, &p);
-    if(ret == HAL_OK) Debug_Printf("P=%.3fW\n", p);
-
-    // Đọc và in giá trị INA219 3V3
-    ret = INA219_Read_Bus_Voltage(&ina_3v3, &v);
-    if(ret == HAL_OK) Debug_Printf("INA219-3V3: V=%.3fV ", v);
-    ret = INA219_Read_Current(&ina_3v3, &i);
-    if(ret == HAL_OK) Debug_Printf("I=%.3fA ", i);
-    ret = INA219_Read_Power(&ina_3v3, &p);
-    if(ret == HAL_OK) Debug_Printf("P=%.3fW\n", p);
-
     osDelay(1000);
   }
   /* USER CODE END StartTaskINA219 */
 }
 
-/* USER CODE BEGIN Header_StartModbusTask */
+/* USER CODE BEGIN Header_StartTaskModbus */
 /**
 * @brief Function implementing the modbusTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartModbusTask */
-void StartModbusTask(void const * argument)
+/* USER CODE END Header_StartTaskModbus */
+void StartTaskModbus(void const * argument)
 {
-  /* USER CODE BEGIN StartModbusTask */
+  /* USER CODE BEGIN StartTaskModbus */
   /* Infinite loop */
   for(;;)
   {
-    // Xử lý Modbus RTU
-    ModbusRTU_Process();
-
-    // Cập nhật dữ liệu từ các nguồn
-    ModbusRTU_UpdateDataFromSources();
-
-    osDelay(1);  // 1ms delay để xử lý nhanh hơn
+	  ModbusRTU_Process();
+    osDelay(1);
   }
-  /* USER CODE END StartModbusTask */
+  /* USER CODE END StartTaskModbus */
 }
 
 /**

@@ -31,7 +31,12 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "debugger.h"
+#include "daly_bms.h"
+#include "sk60x.h"
+#include "ina219.h"
+#include "modbus_rtu.h"
+#include "charge_control.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -67,10 +72,6 @@ void Error_Handler(void);
 #define RL_3V3_GPIO_Port GPIOA
 #define RL_5V_Pin GPIO_PIN_1
 #define RL_5V_GPIO_Port GPIOA
-#define E2E_RX1_Pin GPIO_PIN_4
-#define E2E_RX1_GPIO_Port GPIOA
-#define E2E_RX2_Pin GPIO_PIN_5
-#define E2E_RX2_GPIO_Port GPIOA
 #define RL_12V_Pin GPIO_PIN_0
 #define RL_12V_GPIO_Port GPIOB
 #define RL_CHG_Pin GPIO_PIN_1
