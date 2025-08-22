@@ -111,6 +111,7 @@ extern "C" {
 #define REG_SK60X_ON_OFF            0x003C
 #define REG_SK60X_CHARGE_RELAY      0x003D
 #define REG_SK60X_CHARGE_STATE      0x003E
+#define REG_SK60X_CHARGE_REQUEST    0x003F
 
 // INA219 Sensor Registers
 #define REG_INA219_V_OUT_12V        0x0040

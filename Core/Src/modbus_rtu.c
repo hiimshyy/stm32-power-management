@@ -21,7 +21,6 @@
 #include "daly_bms.h"
 #include "sk60x.h"
 #include "ina219.h"
-#include "debugger.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -153,15 +152,6 @@ ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
     data[length] = crc & 0xFF;
     data[length + 1] = (crc >> 8) & 0xFF;
     length += 2;
-    
-    #ifdef DEBUG_MODBUS
-    Debug_Printf("MB TX[%d]: ", length);
-    for (int i = 0; i < length; i++) {
-        Debug_Printf("%02X ", data[i]);
-    }
-    Debug_Printf("\n");
-    #endif
-    
     // 🔥 Tạm dừng UART receive trước khi transmit
     HAL_UART_AbortReceive_IT(modbus_rtu.huart);
 
@@ -318,7 +308,7 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             
         // SK60X Data Registers
         case REG_SK60X_V_SET:
-			return 1680;
+			return sk60x_data.v_set;
         case REG_SK60X_I_SET:
             return sk60x_data.i_set;
         case REG_SK60X_V_OUT:
@@ -346,7 +336,9 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
         case REG_SK60X_CHARGE_RELAY:
             return HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin);
         case REG_SK60X_CHARGE_STATE:
-            return 0;
+            return ChargeControl_GetChargeStateForModbus();
+        case REG_SK60X_CHARGE_REQUEST:
+            return charge_control.charge_request;
             
         // INA219 Sensor Registers
         case REG_INA219_V_OUT_12V:
@@ -465,19 +457,28 @@ ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
             
         // SK60X Control Registers
         case REG_SK60X_V_SET:
-            // TODO: Implement SK60X voltage setpoint
-            return MODBUS_OK;
+            if (SK60X_Set_Voltage(value)) {
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
             
         case REG_SK60X_I_SET:
-            // TODO: Implement SK60X current setpoint
-            return MODBUS_OK;
+            if (SK60X_Set_Current(value)) {
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
             
         case REG_SK60X_ON_OFF:
-            // TODO: Implement SK60X on/off control
-            return MODBUS_OK;
+            if (SK60X_Set_On_Off(value)) {
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
             
         case REG_SK60X_CHARGE_RELAY:
             HAL_GPIO_WritePin(RL_CHG_GPIO_Port, RL_CHG_Pin, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+            return MODBUS_OK;
+        case REG_SK60X_CHARGE_REQUEST:
+            ChargeControl_HandleRequest(value);
             return MODBUS_OK;
             
         // Relay Control Configuration (writable)
@@ -717,36 +718,30 @@ ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
  */
 void ModbusRTU_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if (huart != modbus_rtu.huart) {
-        return;
-    }
+    if (huart != modbus_rtu.huart) return;
     
     uint32_t current_time = HAL_GetTick();
     
-    // Kiểm tra frame separation timeout
-    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 5) {
-        // Frame mới bắt đầu, reset buffer
-        modbus_rtu.rx_length = 0;
-        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+    // Kiểm tra frame timeout (3.5 character times)
+    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 4) {
+        modbus_rtu.rx_length = 0; // Reset buffer
     }
     
     modbus_rtu.last_rx_time = current_time;
     
-    #ifdef DEBUG_MODBUS
-    Debug_Printf("RX[%d]: %02X\n", modbus_rtu.rx_length, modbus_rtu.rx_buffer[modbus_rtu.rx_length]);
-    #endif
-    
-    // Tăng index cho byte tiếp theo
-    modbus_rtu.rx_length++;
+    // 🔥 QUAN TRỌNG: Kiểm tra buffer trước khi tăng index
+    if (modbus_rtu.rx_length < MODBUS_MAX_FRAME_SIZE - 1) {
+        modbus_rtu.rx_length++;
 
-    // 🔥 QUAN TRỌNG: Chỉ receive tiếp nếu buffer chưa đầy và UART ready
-    if (modbus_rtu.rx_length < MODBUS_MAX_FRAME_SIZE &&
-        modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
-        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[modbus_rtu.rx_length], 1);
+        // Schedule next byte reception
+        if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
+            HAL_UART_Receive_IT(modbus_rtu.huart,
+                              &modbus_rtu.rx_buffer[modbus_rtu.rx_length],
+                              1);
+        }
     } else {
-        // Buffer overflow, reset
+        // Buffer overflow - reset
         modbus_rtu.rx_length = 0;
-        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
         if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
             HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
         }
@@ -760,33 +755,17 @@ void ModbusRTU_Process(void)
 {
     uint32_t current_time = HAL_GetTick();
     
-    // Kiểm tra frame timeout (5ms)
-    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 5) {
-
-        // Chỉ xử lý nếu frame đủ dài
+    // Kiểm tra frame timeout (10ms - an toàn hơn)
+    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 10) {
+        // Chỉ xử lý nếu frame có độ dài hợp lệ
         if (modbus_rtu.rx_length >= MODBUS_MIN_FRAME_SIZE) {
-            #ifdef DEBUG_MODBUS
-            Debug_Printf("MB RX[%d]: ", modbus_rtu.rx_length);
-            for (int i = 0; i < modbus_rtu.rx_length; i++) {
-                Debug_Printf("%02X ", modbus_rtu.rx_buffer[i]);
-            }
-            Debug_Printf("\n");
-            #endif
-
             ModbusRTU_ProcessFrame(modbus_rtu.rx_buffer, modbus_rtu.rx_length);
         }
         
-        // 🔥 QUAN TRỌNG: Reset hoàn toàn buffer RX
         modbus_rtu.rx_length = 0;
         memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
-        
-        // 🔥 Chỉ restart UART receive nếu cần thiết
-        if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
-            HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
-        }
     }
     
-    // 🔥 Backup: Đảm bảo UART luôn ready để nhận
     if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY && modbus_rtu.rx_length == 0) {
         HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
     }
