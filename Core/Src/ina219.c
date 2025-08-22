@@ -126,4 +126,3 @@ HAL_StatusTypeDef INA219_Read_Power(INA219_t *ina, float *power) {
     *power = value * ina->power_lsb;
     return HAL_OK;
 }
-

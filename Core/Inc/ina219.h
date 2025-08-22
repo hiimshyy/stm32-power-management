@@ -24,7 +24,6 @@
 #define INA219_REG_CURRENT        0x04
 #define INA219_REG_CALIBRATION    0x05
 
-// Cấu trúc đối tượng INA219
 typedef struct {
     I2C_HandleTypeDef *hi2c;
     uint8_t address;
