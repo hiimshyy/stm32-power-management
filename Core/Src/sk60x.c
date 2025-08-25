@@ -87,8 +87,8 @@ bool SK60X_Read_Data()
     sk60x_data.m_use  = (_sk60_rx_buffer[26] << 8) | _sk60_rx_buffer[27];
     sk60x_data.s_use  = (_sk60_rx_buffer[28] << 8) | _sk60_rx_buffer[29];
     sk60x_data.temp   = (_sk60_rx_buffer[30] << 8) | _sk60_rx_buffer[31];
-    sk60x_data.lock_v = (_sk60_rx_buffer[34] << 8) | _sk60_rx_buffer[35];
-    sk60x_data.status = (_sk60_rx_buffer[38] << 8) | _sk60_rx_buffer[39];
+    sk60x_data.lock = (_sk60_rx_buffer[34] << 8) | _sk60_rx_buffer[35];
+    sk60x_data.cvcc = (_sk60_rx_buffer[38] << 8) | _sk60_rx_buffer[39];
     sk60x_data.on_off = (_sk60_rx_buffer[40] << 8) | _sk60_rx_buffer[41];
 
     return true;

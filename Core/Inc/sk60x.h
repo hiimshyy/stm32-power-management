@@ -44,13 +44,13 @@ typedef struct {
 	uint16_t p_out;
 	uint16_t v_in;
 	uint16_t i_in;
-	uint16_t lock_v;
+	uint16_t lock;
 	uint16_t temp;
 	uint16_t h_use;
 	uint16_t m_use;
 	uint16_t s_use;
-	uint16_t  status;
-	uint16_t  on_off;
+	uint16_t cvcc;
+	uint16_t on_off;
 
 } SK60X_Data;
 
