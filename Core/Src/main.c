@@ -48,6 +48,7 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 osThreadId defaultTaskHandle;
 osThreadId bmsTaskHandle;
@@ -64,6 +65,7 @@ float voltage_threshold = 13.5f;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
@@ -112,6 +114,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
@@ -141,7 +144,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 64);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of bmsTask */
@@ -157,7 +160,7 @@ int main(void)
   ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
 
   /* definition and creation of modbusTask */
-  osThreadDef(modbusTask, StartTaskModbus, osPriorityNormal, 0, 128);
+  osThreadDef(modbusTask, StartTaskModbus, osPriorityIdle, 0, 128);
   modbusTaskHandle = osThreadCreate(osThread(modbusTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -309,7 +312,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = modbus_config.baudrate_code;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -356,6 +359,22 @@ static void MX_USART3_UART_Init(void)
   /* USER CODE BEGIN USART3_Init 2 */
 
   /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
 
 }
 
@@ -433,6 +452,23 @@ static void MX_GPIO_Init(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     ModbusRTU_RxCpltCallback(huart);
+}
+
+/**
+ * @brief UART Tx Complete Callback
+ * @param huart: UART handle pointer
+ */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == modbus_rtu.huart) {
+        // 🔥 Reset buffer và restart receive sau khi transmit hoàn thành
+        modbus_rtu.rx_length = 0;
+        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+
+        if (huart->RxState == HAL_UART_STATE_READY) {
+            HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
+        }
+    }
 }
 
 /* USER CODE END 4 */
@@ -560,7 +596,7 @@ void StartBMSTask(void const * argument)
 	  		default:
 	  			break;
 	    }
-    osDelay(150);
+    osDelay(40);
   }
   /* USER CODE END StartBMSTask */
 }
