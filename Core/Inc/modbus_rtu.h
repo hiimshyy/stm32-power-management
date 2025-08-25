@@ -50,16 +50,6 @@ extern "C" {
 #define MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE         0x03
 #define MODBUS_EXCEPTION_SLAVE_DEVICE_FAILURE       0x04
 
-// Register Addresses (từ modbus_register_map.md)
-// Modbus Configuration Registers
-#define REG_SLAVE_ID                0x0100
-#define REG_BAUDRATE_CODE           0x0101
-#define REG_PARITY                  0x0102
-#define REG_STOP_BITS               0x0103
-#define REG_FC_MASK                 0x0104
-#define REG_APPLY_CONFIG            0x0105
-#define REG_CONFIG_CRC              0x0106
-
 // DalyBMS Status Registers
 #define REG_BMS_VOLTAGE             0x0000
 #define REG_BMS_CURRENT             0x0001
@@ -107,9 +97,9 @@ extern "C" {
 #define REG_SK60X_H_USE             0x0038
 #define REG_SK60X_M_USE             0x0039
 #define REG_SK60X_S_USE             0x003A
-#define REG_SK60X_STATUS            0x003B
+#define REG_SK60X_CVCC              0x003B
 #define REG_SK60X_ON_OFF            0x003C
-#define REG_SK60X_CHARGE_RELAY      0x003D
+#define REG_SK60X_LOCK              0x003D
 #define REG_SK60X_CHARGE_STATE      0x003E
 #define REG_SK60X_CHARGE_REQUEST    0x003F
 
@@ -124,12 +114,25 @@ extern "C" {
 #define REG_INA219_I_OUT_3V3        0x0047
 #define REG_INA219_P_OUT_3V3        0x0048
 
-// Relay Status Registers (Read Only - 0x0050-0x0054)
-#define REG_RELAY_3V3_STATUS        0x0050
-#define REG_RELAY_5V_STATUS         0x0051
-#define REG_RELAY_12V_STATUS        0x0052
-#define REG_RELAY_FAUL_STATUS       0x0053
-#define REG_VOLTAGE_THRESHOLD    	0x0054
+// Relay Status Registers 
+#define REG_RELAY_3V3_STATUS        0x0049
+#define REG_RELAY_5V_STATUS         0x004A
+#define REG_RELAY_12V_STATUS        0x004B
+#define REG_RELAY_FAUL_STATUS       0x004C
+#define REG_RELAY_CHG_STATUS        0x004D
+#define REG_VOLTAGE_THRESHOLD       0x004E
+
+// System Registers
+#define REG_DEVICE_ID         0x0100  // Device ID (Modbus slave address)
+#define REG_CONFIG_BAUDRATE   0x0101  // Config baudrate (1=9600, 2=19200, 3=38400,...)
+#define REG_CONFIG_PARITY     0x0102  // Config parity (0=None, 1=Even, 2=Odd)
+#define REG_CONFIG_STOP_BITS  0x0103  // Config stop bits (1=1, 2=2)
+#define REG_MODULE_TYPE       0x0104  // Module type (0x0002 = Power Module)
+#define REG_FIRMWARE_VERSION  0x0105  // Firmware version (e.g. 0x0101 = v1.01)
+#define REG_HARDWARE_VERSION  0x0106  // Hardware version (e.g. 0x0101 = v1.01)
+#define REG_SYSTEM_STATUS     0x0107  // System status (bit field)
+#define REG_SYSTEM_ERROR      0x0108  // System error (global error code)
+#define REG_RESET_ERROR_CMD   0x0109  // Reset error command (write 1 to reset all error flags)
 
 /* Exported types ------------------------------------------------------------*/
 typedef enum {
@@ -159,7 +162,7 @@ typedef enum {
 
 typedef struct {
     uint8_t slave_id;
-    ModbusBaudrate_t baudrate_code;
+    ModbusBaudrate_t baudrate_code = MODBUS_BAUD_115200;
     ModbusParity_t parity;
     uint8_t stop_bits;
     uint8_t fc_mask;
@@ -213,7 +216,7 @@ ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value);
 void ModbusRTU_SendException(uint8_t function_code, uint8_t exception_code);
 
 // Utility Functions
-uint32_t ModbusRTU_BaudrateFromCode(ModbusBaudrate_t code);
+void ModbusRTU_BaudrateFromCode(ModbusBaudrate_t code);
 void ModbusRTU_UpdateDataFromSources(void);
 
 #ifdef __cplusplus

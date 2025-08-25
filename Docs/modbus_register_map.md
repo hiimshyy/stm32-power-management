@@ -1,8 +1,7 @@
 # 📘 Modbus RTU Register Mapping - STM32 Power Management
 
 This document defines the Modbus RTU register map used for communication between STM32 and an external master device (e.g. Radxa) via RS485. The values are cached from BMS and SK60X modules and stored in EEPROM (AT24C256).
-
-  ## ⚙️ Modbus Configuration
+  ## ⚙️ System Configuration & Information
 
   | Address   | Name | Description | Data Type | Values / Notes | Default | Access |
   |-----------|------|-------------|-----------|----------------|---------|--------|
@@ -10,9 +9,12 @@ This document defines the Modbus RTU register map used for communication between
   | `0x0101`  | `baudrate_code`| UART baudrate setting (encoded) | `uint8` | `1=9600`, `2=19200`, `3=38400`, `4=57600`, `5=115200` | `1` | Read/Write |
   | `0x0102`  | `parity`| UART parity | `uint8` | `0=None`, `1=Even`, `2=Odd` | `0` | Read/Write |
   | `0x0103`  | `stop_bits` | UART stop bits | `uint8` | `1` or `2` | `1` | Read/Write |
-  | `0x0104`  | `fc_mask` | Supported function codes (bitmask) | `uint8` | Bitmask: `0x01=FC3`, `0x02=FC6`, `0x04=FC16` | `0x07` | Read/Write |
-  | `0x0105`  | `apply_config` | Apply config flag (write = 1 to apply)| `uint8` | `1 = Apply config` | `0` | Write only |
-  | `0x0106`  | `config_crc` | Optional CRC for config validation | `uint16` | CRC16 over above config | `0x0000`| Optional |
+  | `0x0104`  | `module_type` | Type of module | `uint8` | `2 = Power module` | `2` | Read Only |
+  | `0x0105`  | `fw_version` | Firmware version (encoded) | `uint16` | e.g. `0x0101 = v1.01` | - | Read only |
+  | `0x0106`  | `hw_version` | Hardware version (encoded) | `uint16` | e.g. `0x0101 = v1.01` | - | Read only |
+  | `0x0107`  | `system_stt` | System status flags | `uint16` | `0=Normal`,`1=Warning`,`2=Charging` | `0` | Read only |
+  | `0x0108`  | `system_err` | System error flags | `int16` | `0:COMM_ERR`,`1:OVER_VOLT`,`2=UNDER_VOLT`,`3=OVER_CURRENT`,`4:OVER_TEMP` | - | Read only |
+  | `0x0109`  | `reset_err` | Reset error counters/flags | `uint16` | `0=IDLE`,`1=RESET` | `0` | Read/Write |
 
   ---
 
@@ -71,15 +73,15 @@ This document defines the Modbus RTU register map used for communication between
 | `0x0038` | h_use | h | Time used – hours | `uint8` | - | Read Only |
 | `0x0039` | m_use | m | Time used – minutes | `uint8` | - | Read Only |
 | `0x003A` | s_use | s | Time used – seconds | `uint8` | - | Read Only |
-| `0x003B` | status |-| Operational status | `bool` | - | Read Only |
+| `0x003B` | cvcc |-| CVCC Operational status | `bool` | - | Read Only |
 | `0x003C` | on_off |-| Output ON/OFF state | `bool` | - | Read/Write |
-| `0x003D` | charge_relay |-| 0 = NOT, 1 = CHARGE| `bool` | - | Read Only |
+| `0x003D` | lock |-| Disable all button | `bool` | - | Read/Write |
 | `0x003E` | charge_state |-| 0 = IDLE, 1 = WAITING, 2 = CHARGE | `uint16` | - | Read Only |
 | `0x003F` | charge_request |-| 0 = NOT, 1 = REQUEST| `bool` | - | Read/Write |
 
 
 
-### 0x004 - INA219 Sensor Values 
+### 0x0040 - INA219 Sensor Values 
 
 | Address | Name | Unit | Description | Data Type | Scaling | Access    |
 |---------|------|------|-------------|-----------|---------|-----------|
@@ -96,13 +98,12 @@ This document defines the Modbus RTU register map used for communication between
 ### 0x0049 - Relay state
 | Address | Name | Unit | Description | Data Type | Scaling | Access    |
 |---------|------|------|-------------|-----------|---------|-----------|
-| `0x0049` | rl_12V | - | State of 12V relay | `uint8` | - | Read Only |
+| `0x0049` | rl_3V3 | - | State of 3V3 relay | `uint8` | - | Read Only |
 | `0x004A` | rl_5V | - | State of 5V relay | `uint8` | - | Read Only |
-| `0x004B` | rl_3V3 | - | State of 3V3 relay | `uint8`  | - | Read Only |
+| `0x004B` | rl_12V | - | State of 12V relay | `uint8`  | - | Read Only |
 | `0x004C` | rl_faul | - | State of Faul relay | `uint8` | - | Read Only |
-| `0x004D` | use_v_ths | - | Setting voltage usage threshold | `uint16`  | /100.0 | Read/Write |
-
-
+| `0x004D` | rl_charge | - | State of Charge relay | `uint8` | - | Read Only |
+| `0x004F` | use_v_ths | - | Setting voltage usage threshold | `uint16`  | /100.0 | Read/Write |
 
 ---
 
@@ -186,6 +187,30 @@ Write 5 registers: `slave_id`, `baudrate`, `parity`, `stop_bits`, `fc_mask`
 | `0x07`    | Allow FC 3,6,16 |
 
 **Request:** 01 10 01 00 00 05 0A 00 02 00 05 00 00 00 01 00 07 6B B9
+
+---
+
+### 🔍 7. Read System Information (Module Type, Name, Version)
+
+Read 4 registers from `0x00F0`: Device ID, Firmware Version, System Status, System Error
+
+**Request:** 01 03 00 F0 00 04 04 3F
+
+**Response:** 01 03 08 00 01 01 01 00 0F 00 00 XX XX
+
+> Example values: Device ID = 1, Firmware = v1.01, Status = 0x000F (all OK), Error = 0x0000 (no errors)
+
+---
+
+### 📋 8. Read Module Identification (Auto-detect support)
+
+Read module type and name: `0x00F7-0x00F9` (3 registers)
+
+**Request:** 01 03 00 F7 00 03 F4 3C
+
+**Response:** 01 03 06 00 02 44 57 50 57 XX XX
+
+> Values: Module Type = 0x0002 (Power Module), Name = "DWPW" (DalyBms Power)
 
 ---
 

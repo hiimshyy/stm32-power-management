@@ -45,7 +45,7 @@
 /* Private variables ---------------------------------------------------------*/
 ModbusRTU_t modbus_rtu;
 ModbusConfig_t modbus_config = {
-    .slave_id = 0x01,
+    .slave_id = 0x02,
     .baudrate_code = MODBUS_BAUD_115200,  // Match UART2 config
     .parity = MODBUS_PARITY_NONE,
     .stop_bits = 1,
@@ -152,22 +152,21 @@ ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
     data[length] = crc & 0xFF;
     data[length + 1] = (crc >> 8) & 0xFF;
     length += 2;
+
     // 🔥 Tạm dừng UART receive trước khi transmit
     HAL_UART_AbortReceive_IT(modbus_rtu.huart);
 
-    // Gửi response
-    if (HAL_UART_Transmit(modbus_rtu.huart, data, length, MODBUS_TIMEOUT_MS) != HAL_OK) {
+    // ✅ SỬA: Sử dụng DMA thay vì blocking transmit
+    if (HAL_UART_Transmit_DMA(modbus_rtu.huart, data, length) != HAL_OK) {
+        // Restart receive nếu transmit fail
+        modbus_rtu.rx_length = 0;
+        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
         return MODBUS_ERROR_DEVICE_FAILURE;
     }
     
-    // 🔥 QUAN TRỌNG: Reset hoàn toàn buffer RX sau khi transmit
-    modbus_rtu.rx_length = 0;
-    memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
-    
-    // Restart UART receive
-    if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
-        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
-    }
+    // ✅ KHÔNG reset buffer ở đây nữa - sẽ làm trong TX complete callback
+    // Việc transmit sẽ chạy ngầm, hàm return ngay lập tức
     
     return MODBUS_OK;
 }
@@ -329,12 +328,12 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             return sk60x_data.m_use;
         case REG_SK60X_S_USE:
             return sk60x_data.s_use;
-        case REG_SK60X_STATUS:
-            return sk60x_data.status;
+        case REG_SK60X_CVCC:
+            return sk60x_data.cvcc;
         case REG_SK60X_ON_OFF:
             return sk60x_data.on_off;
-        case REG_SK60X_CHARGE_RELAY:
-            return HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin);
+        case REG_SK60X_LOCK:
+            return sk60x_data.lock;
         case REG_SK60X_CHARGE_STATE:
             return ChargeControl_GetChargeStateForModbus();
         case REG_SK60X_CHARGE_REQUEST:
@@ -396,8 +395,72 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             return HAL_GPIO_ReadPin(RL_12V_GPIO_Port, RL_12V_Pin);
         case REG_RELAY_FAUL_STATUS:
         	return HAL_GPIO_ReadPin(FAUL_OUT_GPIO_Port, FAUL_OUT_Pin);
+        case REG_RELAY_CHG_STATUS:
+            return HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin);
         case REG_VOLTAGE_THRESHOLD:
             return (uint16_t)(voltage_threshold * 100);  // Scale by 100 (13.5V -> 1350)
+            
+        // System Registers (0x00F0-0x00FF) - Auto Detect Support
+        case POWER_REG_DEVICE_ID:
+            return modbus_rtu.slave_id;
+        case POWER_REG_FIRMWARE_VERSION:
+            return 0x0101;  // v1.01
+        case POWER_REG_SYSTEM_STATUS:
+            {
+                uint16_t status = 0;
+                // Bit 0: BMS Connection
+                if (bms_data.connection_status) status |= 0x0001;
+                // Bit 1: SK60X Status
+                if (sk60x_data.status) status |= 0x0002;
+                // Bit 2: Power relay enabled
+                if (relay_power_enabled) status |= 0x0004;
+                // Bit 3: Charge relay
+                if (HAL_GPIO_ReadPin(RL_CHG_GPIO_Port, RL_CHG_Pin)) status |= 0x0008;
+                // Bit 4-7: Reserved
+                return status;
+            }
+        case POWER_REG_SYSTEM_ERROR:
+            {
+                uint16_t error = 0;
+                // Bit 0: BMS Error
+                if (!bms_data.connection_status) error |= 0x0001;
+                // Bit 1: BMS Fault
+                if (bms_data.fault_flags != 0) error |= 0x0002;
+                // Bit 2: SK60X Error
+                if (!sk60x_data.status) error |= 0x0004;
+                // Bit 3-15: Reserved for future use
+                return error;
+            }
+        case POWER_REG_CONFIG_BAUDRATE:
+            return modbus_config.baudrate_code;
+        case POWER_REG_CONFIG_PARITY:
+            return modbus_config.parity;
+        case POWER_REG_MODULE_TYPE:
+            return 0x0002;  // Power Module
+        case POWER_REG_MODULE_NAME_LOW:
+            return 0x4457;  // "DW" - DalyBms Power module (low word)
+        case POWER_REG_MODULE_NAME_HIGH:
+            return 0x5057;  // "PW" - DalyBms Power module (high word)
+        case POWER_REG_HARDWARE_VERSION:
+            return 0x0100;  // v1.00
+        case POWER_REG_SERIAL_NUMBER_LOW:
+            return 0x0001;  // Serial number low word (can be customized)
+        case POWER_REG_SERIAL_NUMBER_HIGH:
+            return 0x2025;  // Serial number high word (year 2025)
+        case POWER_REG_BUILD_DATE_LOW:
+            return 0x0101;  // Build date low word (Jan 1st)
+        case POWER_REG_BUILD_DATE_HIGH:
+            return 0x2025;  // Build date high word (2025)
+        case POWER_REG_CHECKSUM:
+            {
+                // Calculate simple checksum of system registers
+                uint16_t checksum = 0;
+                checksum ^= modbus_rtu.slave_id;
+                checksum ^= 0x0101;  // firmware version
+                checksum ^= 0x0002;  // module type
+                checksum ^= 0x0100;  // hardware version
+                return checksum;
+            }
             
         default:
             return 0;
@@ -474,16 +537,19 @@ ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
             }
             return MODBUS_ERROR_VALUE;
             
-        case REG_SK60X_CHARGE_RELAY:
-            HAL_GPIO_WritePin(RL_CHG_GPIO_Port, RL_CHG_Pin, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
-            return MODBUS_OK;
+        case REG_SK60X_LOCK:
+            if (SK60X_Set_Lock(value)) {
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
+            
         case REG_SK60X_CHARGE_REQUEST:
             ChargeControl_HandleRequest(value);
             return MODBUS_OK;
             
         // Relay Control Configuration (writable)
         case REG_VOLTAGE_THRESHOLD:
-            if (value >= 1000 && value <= 2000) {  // 10.0V to 20.0V range
+            if (value >= 1200 && value <= 2000) {  // 12.0V to 20.0V range
                 voltage_threshold = (float)value / 100.0f;
                 return MODBUS_OK;
             }
@@ -500,6 +566,29 @@ ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
         case REG_BMS_MIN_PACK_THRESHOLD_2:
             // TODO: Implement BMS threshold writing
             return MODBUS_OK;
+            
+        // System Registers (Writable ones)
+        case POWER_REG_RESET_ERROR_CMD:
+            if (value == 1) {
+                // Reset all error flags
+                // TODO: Implement actual error flag reset logic
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
+            
+        case POWER_REG_CONFIG_BAUDRATE:
+            if (value >= 1 && value <= 5) {
+                modbus_config.baudrate_code = (ModbusBaudrate_t)value;
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
+            
+        case POWER_REG_CONFIG_PARITY:
+            if (value <= 2) {
+                modbus_config.parity = (ModbusParity_t)value;
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
             
         default:
             return MODBUS_ERROR_ADDRESS;
@@ -791,16 +880,43 @@ HAL_StatusTypeDef ModbusRTU_ApplyConfig(void)
  * @param code: Baudrate code
  * @retval Baudrate value
  */
-uint32_t ModbusRTU_BaudrateFromCode(ModbusBaudrate_t code)
+void ModbusRTU_BaudrateFromCode(ModbusBaudrate_t code)
 {
+    uint32_t baudrate;
     switch (code) {
-        case MODBUS_BAUD_9600:   return 9600;
-        case MODBUS_BAUD_19200:  return 19200;
-        case MODBUS_BAUD_38400:  return 38400;
-        case MODBUS_BAUD_57600:  return 57600;
-        case MODBUS_BAUD_115200: return 115200;
-        default:                 return 9600;
+        case MODBUS_BAUD_9600:   
+            baudrate = 9600;
+            break;
+        case MODBUS_BAUD_19200:  
+            baudrate = 19200;
+            break;
+        case MODBUS_BAUD_38400:  
+            baudrate = 38400;
+            break;
+        case MODBUS_BAUD_57600:  
+            baudrate = 57600;
+            break;
+        case MODBUS_BAUD_115200: 
+            baudrate = 115200;
+            break;
+        default:                 
+            baudrate = 9600;
+            break;
     }
+
+    // turn off UART2 before change baudrate
+    CLEAR_BIT(huart2.Instance->CR1, USART_CR1_UE);
+    
+    // Update BRR register
+    uint32_t pclk = HAL_RCC_GetPCLK1Freq();   // clock cho USART2 (APB1)
+    huart2.Instance->BRR = (pclk + (baudrate/2U)) / baudrate;
+    
+    // Update baudrate
+    huart2.Init.BaudRate = baudrate;
+    
+    // turn on UART2
+    SET_BIT(huart2.Instance->CR1, USART_CR1_UE);
+
 }
 
 /**
