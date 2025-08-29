@@ -608,8 +608,6 @@ bool DalyBMS_Reset()
 
 	if (!DalyBMS_Recive(1))
 	{
-		//debug_log
-		//Debug_Printf("BMS reset failed\n");
 		return false;  // Receive error
 	}
 	return true;
