@@ -108,6 +108,20 @@ bool SK60X_Set_On_Off(uint16_t on_off)
 		return false;
 }
 
+bool SK60X_Set_Lock(uint16_t lock)
+{
+	if (lock != 0 && lock != 1)
+	{
+		return false; // Invalid lock value
+	}
+	if(SK60X_Send_Command(SET_LOCK, lock))
+	{
+		return true;
+	}
+	else
+		return false;
+}
+
 bool SK60X_Set_Voltage(uint16_t voltage)
 {
 	if (voltage < SK60X_MIN_VOLTAGE || voltage > SK60X_MAX_VOLTAGE) {

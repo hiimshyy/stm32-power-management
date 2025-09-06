@@ -16,6 +16,6 @@
 ../Core/Src/daly_bms.c:532:6:DalyBMS_Set_Charge_MOS	8	static
 ../Core/Src/daly_bms.c:556:6:DalyBMS_Set_SoC	16	static
 ../Core/Src/daly_bms.c:604:6:DalyBMS_Reset	8	static
-../Core/Src/daly_bms.c:618:6:DalyBMS_On_Request_Done	0	static
-../Core/Src/daly_bms.c:650:6:DalyBMS_Clear_Get	0	static
-../Core/Src/daly_bms.c:655:6:DalyBMS_Set_Callback	0	static
+../Core/Src/daly_bms.c:616:6:DalyBMS_On_Request_Done	0	static
+../Core/Src/daly_bms.c:648:6:DalyBMS_Clear_Get	0	static
+../Core/Src/daly_bms.c:653:6:DalyBMS_Set_Callback	0	static

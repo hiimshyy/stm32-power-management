@@ -33,6 +33,7 @@ extern UART_HandleTypeDef huart3;
 typedef enum {
 	SET_VOLTAGE = 0x01,
 	SET_CURRENT = 0x02,
+	SET_LOCK = 0x11,
 	SET_ON_OFF = 0x12,
 } SK60X_Command;
 
@@ -62,6 +63,7 @@ extern uint8_t _sk60_tx_buffer[REQUEST_FRAME_SIZE];
 bool SK60X_Read_Data();
 bool SK60X_Fan_Control(bool enable);
 bool SK60X_Set_On_Off(uint16_t  on_off);
+bool SK60X_Set_Lock(uint16_t lock);
 bool SK60X_Set_Voltage(uint16_t voltage);
 bool SK60X_Set_Current(uint16_t current);
 

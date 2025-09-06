@@ -162,7 +162,7 @@ typedef enum {
 
 typedef struct {
     uint8_t slave_id;
-    ModbusBaudrate_t baudrate_code = MODBUS_BAUD_115200;
+    uint8_t baudrate_code;
     ModbusParity_t parity;
     uint8_t stop_bits;
     uint8_t fc_mask;

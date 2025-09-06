@@ -153,20 +153,14 @@ ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
     data[length + 1] = (crc >> 8) & 0xFF;
     length += 2;
 
-    // 🔥 Tạm dừng UART receive trước khi transmit
     HAL_UART_AbortReceive_IT(modbus_rtu.huart);
 
-    // ✅ SỬA: Sử dụng DMA thay vì blocking transmit
     if (HAL_UART_Transmit_DMA(modbus_rtu.huart, data, length) != HAL_OK) {
-        // Restart receive nếu transmit fail
         modbus_rtu.rx_length = 0;
         memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
         HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
         return MODBUS_ERROR_DEVICE_FAILURE;
     }
-    
-    // ✅ KHÔNG reset buffer ở đây nữa - sẽ làm trong TX complete callback
-    // Việc transmit sẽ chạy ngầm, hàm return ngay lập tức
     
     return MODBUS_OK;
 }
@@ -197,20 +191,6 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
     float temp_float;
     
     switch (address) {
-        // Modbus Configuration Registers
-        case REG_SLAVE_ID:
-            return modbus_config.slave_id;
-        case REG_BAUDRATE_CODE:
-            return modbus_config.baudrate_code;
-        case REG_PARITY:
-            return modbus_config.parity;
-        case REG_STOP_BITS:
-            return modbus_config.stop_bits;
-        case REG_FC_MASK:
-            return modbus_config.fc_mask;
-        case REG_CONFIG_CRC:
-            return 0x0000;  // TODO: Implement config CRC
-            
         // DalyBMS Status Registers
         case REG_BMS_VOLTAGE:
             return bms_data.voltage;
@@ -401,17 +381,27 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
             return (uint16_t)(voltage_threshold * 100);  // Scale by 100 (13.5V -> 1350)
             
         // System Registers (0x00F0-0x00FF) - Auto Detect Support
-        case POWER_REG_DEVICE_ID:
+        case REG_DEVICE_ID:
             return modbus_rtu.slave_id;
-        case POWER_REG_FIRMWARE_VERSION:
+        case REG_CONFIG_BAUDRATE:
+            return modbus_config.baudrate_code;
+        case REG_CONFIG_PARITY:
+            return modbus_config.parity;
+        case REG_CONFIG_STOP_BITS:
+            return modbus_config.stop_bits;
+        case REG_MODULE_TYPE:
+            return 0x0002;  // Power Module
+        case REG_FIRMWARE_VERSION:
             return 0x0101;  // v1.01
-        case POWER_REG_SYSTEM_STATUS:
+        case REG_HARDWARE_VERSION:
+        	return 0x0101;  // v1.01
+        case REG_SYSTEM_STATUS:
             {
                 uint16_t status = 0;
                 // Bit 0: BMS Connection
                 if (bms_data.connection_status) status |= 0x0001;
                 // Bit 1: SK60X Status
-                if (sk60x_data.status) status |= 0x0002;
+                if (sk60x_data.on_off) status |= 0x0002;
                 // Bit 2: Power relay enabled
                 if (relay_power_enabled) status |= 0x0004;
                 // Bit 3: Charge relay
@@ -419,7 +409,7 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
                 // Bit 4-7: Reserved
                 return status;
             }
-        case POWER_REG_SYSTEM_ERROR:
+        case REG_SYSTEM_ERROR:
             {
                 uint16_t error = 0;
                 // Bit 0: BMS Error
@@ -427,40 +417,12 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
                 // Bit 1: BMS Fault
                 if (bms_data.fault_flags != 0) error |= 0x0002;
                 // Bit 2: SK60X Error
-                if (!sk60x_data.status) error |= 0x0004;
+                if (!sk60x_data.on_off) error |= 0x0004;
                 // Bit 3-15: Reserved for future use
                 return error;
             }
-        case POWER_REG_CONFIG_BAUDRATE:
-            return modbus_config.baudrate_code;
-        case POWER_REG_CONFIG_PARITY:
-            return modbus_config.parity;
-        case POWER_REG_MODULE_TYPE:
-            return 0x0002;  // Power Module
-        case POWER_REG_MODULE_NAME_LOW:
-            return 0x4457;  // "DW" - DalyBms Power module (low word)
-        case POWER_REG_MODULE_NAME_HIGH:
-            return 0x5057;  // "PW" - DalyBms Power module (high word)
-        case POWER_REG_HARDWARE_VERSION:
-            return 0x0100;  // v1.00
-        case POWER_REG_SERIAL_NUMBER_LOW:
-            return 0x0001;  // Serial number low word (can be customized)
-        case POWER_REG_SERIAL_NUMBER_HIGH:
-            return 0x2025;  // Serial number high word (year 2025)
-        case POWER_REG_BUILD_DATE_LOW:
-            return 0x0101;  // Build date low word (Jan 1st)
-        case POWER_REG_BUILD_DATE_HIGH:
-            return 0x2025;  // Build date high word (2025)
-        case POWER_REG_CHECKSUM:
-            {
-                // Calculate simple checksum of system registers
-                uint16_t checksum = 0;
-                checksum ^= modbus_rtu.slave_id;
-                checksum ^= 0x0101;  // firmware version
-                checksum ^= 0x0002;  // module type
-                checksum ^= 0x0100;  // hardware version
-                return checksum;
-            }
+        case REG_RESET_ERROR_CMD:
+            return 0;
             
         default:
             return 0;
@@ -475,49 +437,7 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
  */
 ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
 {
-    switch (address) {
-        // Modbus Configuration Registers
-        case REG_SLAVE_ID:
-            if (value >= 1 && value <= 247) {
-                modbus_config.slave_id = (uint8_t)value;
-                return MODBUS_OK;
-            }
-            return MODBUS_ERROR_VALUE;
-            
-        case REG_BAUDRATE_CODE:
-            if (value >= 1 && value <= 5) {
-                modbus_config.baudrate_code = (ModbusBaudrate_t)value;
-                return MODBUS_OK;
-            }
-            return MODBUS_ERROR_VALUE;
-            
-        case REG_PARITY:
-            if (value <= 2) {
-                modbus_config.parity = (ModbusParity_t)value;
-                return MODBUS_OK;
-            }
-            return MODBUS_ERROR_VALUE;
-            
-        case REG_STOP_BITS:
-            if (value == 1 || value == 2) {
-                modbus_config.stop_bits = (uint8_t)value;
-                return MODBUS_OK;
-            }
-            return MODBUS_ERROR_VALUE;
-            
-        case REG_FC_MASK:
-            if (value <= 0x07) {
-                modbus_config.fc_mask = (uint8_t)value;
-                return MODBUS_OK;
-            }
-            return MODBUS_ERROR_VALUE;
-            
-        case REG_APPLY_CONFIG:
-            if (value == 1) {
-                return ModbusRTU_ApplyConfig();
-            }
-            return MODBUS_ERROR_VALUE;
-            
+    switch (address) {            
         // SK60X Control Registers
         case REG_SK60X_V_SET:
             if (SK60X_Set_Voltage(value)) {
@@ -568,7 +488,7 @@ ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
             return MODBUS_OK;
             
         // System Registers (Writable ones)
-        case POWER_REG_RESET_ERROR_CMD:
+        case REG_RESET_ERROR_CMD:
             if (value == 1) {
                 // Reset all error flags
                 // TODO: Implement actual error flag reset logic
@@ -576,16 +496,23 @@ ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
             }
             return MODBUS_ERROR_VALUE;
             
-        case POWER_REG_CONFIG_BAUDRATE:
+        case REG_CONFIG_BAUDRATE:
             if (value >= 1 && value <= 5) {
                 modbus_config.baudrate_code = (ModbusBaudrate_t)value;
                 return MODBUS_OK;
             }
             return MODBUS_ERROR_VALUE;
             
-        case POWER_REG_CONFIG_PARITY:
+        case REG_CONFIG_PARITY:
             if (value <= 2) {
                 modbus_config.parity = (ModbusParity_t)value;
+                return MODBUS_OK;
+            }
+            return MODBUS_ERROR_VALUE;
+            
+        case REG_CONFIG_STOP_BITS:
+            if (value == 1 || value == 2) {
+                modbus_config.stop_bits = (uint8_t)value;
                 return MODBUS_OK;
             }
             return MODBUS_ERROR_VALUE;
@@ -882,41 +809,40 @@ HAL_StatusTypeDef ModbusRTU_ApplyConfig(void)
  */
 void ModbusRTU_BaudrateFromCode(ModbusBaudrate_t code)
 {
-    uint32_t baudrate;
-    switch (code) {
-        case MODBUS_BAUD_9600:   
-            baudrate = 9600;
-            break;
-        case MODBUS_BAUD_19200:  
-            baudrate = 19200;
-            break;
-        case MODBUS_BAUD_38400:  
-            baudrate = 38400;
-            break;
-        case MODBUS_BAUD_57600:  
-            baudrate = 57600;
-            break;
-        case MODBUS_BAUD_115200: 
-            baudrate = 115200;
-            break;
-        default:                 
-            baudrate = 9600;
-            break;
-    }
+//    uint32_t baudrate;
+//    switch (code) {
+//        case MODBUS_BAUD_9600:
+//            baudrate = 9600;
+//            break;
+//        case MODBUS_BAUD_19200:
+//            baudrate = 19200;
+//            break;
+//        case MODBUS_BAUD_38400:
+//            baudrate = 38400;
+//            break;
+//        case MODBUS_BAUD_57600:
+//            baudrate = 57600;
+//            break;
+//        case MODBUS_BAUD_115200:
+//            baudrate = 115200;
+//            break;
+//        default:
+//            baudrate = 9600;
+//            break;
+//    }
 
-    // turn off UART2 before change baudrate
-    CLEAR_BIT(huart2.Instance->CR1, USART_CR1_UE);
-    
-    // Update BRR register
-    uint32_t pclk = HAL_RCC_GetPCLK1Freq();   // clock cho USART2 (APB1)
-    huart2.Instance->BRR = (pclk + (baudrate/2U)) / baudrate;
-    
-    // Update baudrate
-    huart2.Init.BaudRate = baudrate;
-    
-    // turn on UART2
-    SET_BIT(huart2.Instance->CR1, USART_CR1_UE);
-
+//    // turn off UART2 before change baudrate
+//    CLEAR_BIT(huart2.Instance->CR1, USART_CR1_UE);
+//
+//    // Update BRR register
+//    uint32_t pclk = HAL_RCC_GetPCLK1Freq();   // clock cho USART2 (APB1)
+//    huart2.Instance->BRR = (pclk + (baudrate/2U)) / baudrate;
+//
+//    // Update baudrate
+//    huart2.Init.BaudRate = baudrate;
+//
+//    // turn on UART2
+//    SET_BIT(huart2.Instance->CR1, USART_CR1_UE);
 }
 
 /**
