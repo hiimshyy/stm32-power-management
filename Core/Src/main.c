@@ -144,7 +144,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 64);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of bmsTask */
@@ -160,7 +160,7 @@ int main(void)
   ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
 
   /* definition and creation of modbusTask */
-  osThreadDef(modbusTask, StartTaskModbus, osPriorityIdle, 0, 128);
+  osThreadDef(modbusTask, StartTaskModbus, osPriorityNormal, 0, 128);
   modbusTaskHandle = osThreadCreate(osThread(modbusTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -461,7 +461,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart == modbus_rtu.huart) {
-        // 🔥 Reset buffer và restart receive sau khi transmit hoàn thành
+        // 🔥 Reset buffer and restart receive after transmit completion
         modbus_rtu.rx_length = 0;
         memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
 
@@ -483,20 +483,20 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void StartDefaultTask(void const * argument)
 {
   /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
+//  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
     /* Infinite loop */
     for(;;)
     {
 //    	Debug_USB_Process();
-		// Điều khiển relay dựa trên điện áp BMS với hysteresis
+		// Control relay based on BMS voltage with hysteresis
 		if (!relay_power_enabled && bms_data.voltage > voltage_threshold) {
-			// Bật relay power rails khi voltage > 13.5V
+			// Enable relay power rails when voltage > 13.5V
 			HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_SET);
 			HAL_GPIO_WritePin(GPIOB, RL_12V_Pin, GPIO_PIN_SET);
 			relay_power_enabled = true;
 		} else if (relay_power_enabled && bms_data.voltage < voltage_threshold) {
-			// Tắt relay power rails khi voltage < 13.0V
+			// Disable relay power rails when voltage < 13.0V
 			HAL_GPIO_WritePin(GPIOA, RL_3V3_Pin|RL_5V_Pin, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOB, RL_12V_Pin, GPIO_PIN_RESET);
 			relay_power_enabled = false;
@@ -630,7 +630,7 @@ void StartSK60xTask(void const * argument)
 void StartTaskINA219(void const * argument)
 {
   /* USER CODE BEGIN StartTaskINA219 */
-  INA219_Init(&ina_12v, &hi2c1, INA219_ADDR_12V, 0.1f, 3.0f);   // Rshunt = 0.1Ω, dòng tối đa 3A
+  INA219_Init(&ina_12v, &hi2c1, INA219_ADDR_12V, 0.1f, 3.0f);   // Rshunt = 0.1Ω, max current 3A
   INA219_Init(&ina_5v,  &hi2c1, INA219_ADDR_5V,  0.1f, 3.0f);
   INA219_Init(&ina_3v3, &hi2c1, INA219_ADDR_3V3, 0.1f, 3.0f);
 

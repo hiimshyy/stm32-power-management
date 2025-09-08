@@ -36,7 +36,7 @@ extern "C" {
 #define MODBUS_TIMEOUT_MS          100
 #define MODBUS_TX_DELAY_MS         5
 
-// Uncomment để enable debug output
+// Uncomment to enable debug output
 #define DEBUG_MODBUS
 
 // Function Codes
@@ -162,7 +162,7 @@ typedef enum {
 
 typedef struct {
     uint8_t slave_id;
-    uint8_t baudrate_code;
+    ModbusBaudrate_t baudrate_code;
     ModbusParity_t parity;
     uint8_t stop_bits;
     uint8_t fc_mask;

@@ -52,7 +52,7 @@ ModbusConfig_t modbus_config = {
     .fc_mask = 0x07  // Support FC 03, 06, 16
 };
 
-// External variables từ các module khác
+// External variables from other modules
 extern DalyBMS_Data bms_data;
 extern SK60X_Data sk60x_data;
 extern INA219_t ina_12v, ina_5v, ina_3v3;
@@ -93,7 +93,7 @@ HAL_StatusTypeDef ModbusRTU_Init(UART_HandleTypeDef *huart)
     memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
     memset(modbus_rtu.tx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
     
-    // Bắt đầu nhận dữ liệu từng byte
+    // Start receiving data byte by byte
     return HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
 }
 
@@ -122,10 +122,10 @@ uint16_t ModbusRTU_CalculateCRC(uint8_t *data, uint16_t length)
 }
 
 /**
- * @brief Check CRC của frame nhận được
+ * @brief Check CRC of received frame
  * @param frame: Pointer to frame buffer
  * @param length: Length of frame
- * @retval true nếu CRC đúng, false nếu sai
+ * @retval true if CRC is correct, false if wrong
  */
 bool ModbusRTU_CheckCRC(uint8_t *frame, uint16_t length)
 {
@@ -140,14 +140,14 @@ bool ModbusRTU_CheckCRC(uint8_t *frame, uint16_t length)
 }
 
 /**
- * @brief Gửi response qua UART
+ * @brief Send response via UART
  * @param data: Pointer to data buffer
  * @param length: Length of data
  * @retval Modbus status
  */
 ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
 {
-    // Tính CRC và thêm vào frame
+    // Calculate CRC and add to frame
     uint16_t crc = ModbusRTU_CalculateCRC(data, length);
     data[length] = crc & 0xFF;
     data[length + 1] = (crc >> 8) & 0xFF;
@@ -166,25 +166,25 @@ ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
 }
 
 /**
- * @brief Gửi exception response
- * @param function_code: Function code gốc
- * @param exception_code: Mã lỗi exception
+ * @brief Send exception response
+ * @param function_code: Original function code
+ * @param exception_code: Exception error code
  */
 void ModbusRTU_SendException(uint8_t function_code, uint8_t exception_code)
 {
     modbus_rtu.tx_buffer[0] = modbus_rtu.slave_id;
-    modbus_rtu.tx_buffer[1] = function_code | 0x80;  // Set bit lỗi
+    modbus_rtu.tx_buffer[1] = function_code | 0x80;  // Set error bit
     modbus_rtu.tx_buffer[2] = exception_code;
     
     ModbusRTU_SendResponse(modbus_rtu.tx_buffer, 3);
     
-    // ModbusRTU_SendResponse đã restart UART receive interrupt
+    // ModbusRTU_SendResponse has already restarted UART receive interrupt
 }
 
 /**
- * @brief Đọc giá trị register theo địa chỉ
- * @param address: Địa chỉ register
- * @retval Giá trị register
+ * @brief Read register value by address
+ * @param address: Register address
+ * @retval Register value
  */
 uint16_t ModbusRTU_ReadRegister(uint16_t address)
 {
@@ -430,9 +430,9 @@ uint16_t ModbusRTU_ReadRegister(uint16_t address)
 }
 
 /**
- * @brief Ghi giá trị vào register
- * @param address: Địa chỉ register
- * @param value: Giá trị cần ghi
+ * @brief Write value to register
+ * @param address: Register address
+ * @param value: Value to write
  * @retval Modbus status
  */
 ModbusStatus_t ModbusRTU_WriteRegister(uint16_t address, uint16_t value)
@@ -537,13 +537,13 @@ ModbusStatus_t ModbusRTU_ReadHoldingRegisters(uint8_t *frame, uint16_t length)
     uint16_t start_address = (frame[2] << 8) | frame[3];
     uint16_t quantity = (frame[4] << 8) | frame[5];
     
-    // Kiểm tra số lượng register hợp lệ
+    // Check valid register quantity
     if (quantity == 0 || quantity > 125) {
         ModbusRTU_SendException(MODBUS_FC_READ_HOLDING_REGISTERS, MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE);
         return MODBUS_ERROR_VALUE;
     }
     
-    // Tạo response
+    // Create response
     modbus_rtu.tx_buffer[0] = modbus_rtu.slave_id;
     modbus_rtu.tx_buffer[1] = MODBUS_FC_READ_HOLDING_REGISTERS;
     modbus_rtu.tx_buffer[2] = quantity * 2;  // Byte count
@@ -598,7 +598,7 @@ ModbusStatus_t ModbusRTU_WriteSingleRegister(uint8_t *frame, uint16_t length)
         return status;
     }
     
-    // Echo lại request như response
+    // Echo request as response
     return ModbusRTU_SendResponse(frame, 6);
 }
 
@@ -618,7 +618,7 @@ ModbusStatus_t ModbusRTU_WriteMultipleRegisters(uint8_t *frame, uint16_t length)
     uint16_t quantity = (frame[4] << 8) | frame[5];
     uint8_t byte_count = frame[6];
     
-    // Kiểm tra tính hợp lệ
+    // Check validity
     if (quantity == 0 || quantity > 123 || byte_count != (quantity * 2)) {
         ModbusRTU_SendException(MODBUS_FC_WRITE_MULTIPLE_REGISTERS, MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE);
         return MODBUS_ERROR_VALUE;
@@ -628,7 +628,7 @@ ModbusStatus_t ModbusRTU_WriteMultipleRegisters(uint8_t *frame, uint16_t length)
         return MODBUS_ERROR_FRAME;
     }
     
-    // Ghi từng register
+    // Write each register
     for (uint16_t i = 0; i < quantity; i++) {
         uint16_t reg_address = start_address + i;
         uint16_t reg_value = (frame[7 + i * 2] << 8) | frame[8 + i * 2];
@@ -653,7 +653,7 @@ ModbusStatus_t ModbusRTU_WriteMultipleRegisters(uint8_t *frame, uint16_t length)
         }
     }
     
-    // Tạo response
+    // Create response
     modbus_rtu.tx_buffer[0] = modbus_rtu.slave_id;
     modbus_rtu.tx_buffer[1] = MODBUS_FC_WRITE_MULTIPLE_REGISTERS;
     modbus_rtu.tx_buffer[2] = (start_address >> 8) & 0xFF;
@@ -665,31 +665,31 @@ ModbusStatus_t ModbusRTU_WriteMultipleRegisters(uint8_t *frame, uint16_t length)
 }
 
 /**
- * @brief Xử lý frame Modbus RTU nhận được
+ * @brief Process received Modbus RTU frame
  * @param frame: Pointer to frame buffer
  * @param length: Frame length
  * @retval Modbus status
  */
 ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
 {
-    // Kiểm tra độ dài tối thiểu
+    // Check minimum length
     if (length < MODBUS_MIN_FRAME_SIZE) {
         return MODBUS_ERROR_FRAME;
     }
     
-    // Kiểm tra slave ID
+    // Check slave ID
     if (frame[0] != modbus_rtu.slave_id) {
-        return MODBUS_OK;  // Không phải địa chỉ của mình, bỏ qua
+        return MODBUS_OK;  // Not our address, ignore
     }
     
-    // Kiểm tra CRC
+    // Check CRC
     if (!ModbusRTU_CheckCRC(frame, length)) {
         return MODBUS_ERROR_CRC;
     }
     
     uint8_t function_code = frame[1];
     
-    // Kiểm tra function code có được hỗ trợ không
+    // Check if function code is supported
     uint8_t fc_bit = 0;
     switch (function_code) {
         case MODBUS_FC_READ_HOLDING_REGISTERS:
@@ -711,7 +711,7 @@ ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
         return MODBUS_ERROR_FUNCTION;
     }
     
-    // Xử lý theo function code
+    // Process according to function code
     switch (function_code) {
         case MODBUS_FC_READ_HOLDING_REGISTERS:
             return ModbusRTU_ReadHoldingRegisters(frame, length);
@@ -738,14 +738,14 @@ void ModbusRTU_RxCpltCallback(UART_HandleTypeDef *huart)
     
     uint32_t current_time = HAL_GetTick();
     
-    // Kiểm tra frame timeout (3.5 character times)
+    // Check frame timeout (3.5 character times)
     if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 4) {
         modbus_rtu.rx_length = 0; // Reset buffer
     }
     
     modbus_rtu.last_rx_time = current_time;
     
-    // 🔥 QUAN TRỌNG: Kiểm tra buffer trước khi tăng index
+    // 🔥 IMPORTANT: Check buffer before incrementing index
     if (modbus_rtu.rx_length < MODBUS_MAX_FRAME_SIZE - 1) {
         modbus_rtu.rx_length++;
 
@@ -765,15 +765,15 @@ void ModbusRTU_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 /**
- * @brief Xử lý chính của Modbus RTU (gọi trong main loop)
+ * @brief Main processing of Modbus RTU (called in main loop)
  */
 void ModbusRTU_Process(void)
 {
     uint32_t current_time = HAL_GetTick();
     
-    // Kiểm tra frame timeout (10ms - an toàn hơn)
+    // Check frame timeout (10ms - safer)
     if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 10) {
-        // Chỉ xử lý nếu frame có độ dài hợp lệ
+        // Only process if frame has valid length
         if (modbus_rtu.rx_length >= MODBUS_MIN_FRAME_SIZE) {
             ModbusRTU_ProcessFrame(modbus_rtu.rx_buffer, modbus_rtu.rx_length);
         }
@@ -788,7 +788,7 @@ void ModbusRTU_Process(void)
 }
 
 /**
- * @brief Áp dụng cấu hình Modbus mới
+ * @brief Apply new Modbus configuration
  * @retval HAL status
  */
 HAL_StatusTypeDef ModbusRTU_ApplyConfig(void)
@@ -847,12 +847,12 @@ void ModbusRTU_BaudrateFromCode(ModbusBaudrate_t code)
 
 /**
  * @brief Update data from external sources (BMS, SK60X, INA219)
- * Call này trong main loop để cập nhật dữ liệu từ các nguồn
+ * Call this in main loop to update data from sources
  */
 void ModbusRTU_UpdateDataFromSources(void)
 {
-    // Dữ liệu đã được cập nhật tự động qua các task riêng biệt
-    // Function này có thể được mở rộng để thực hiện các tác vụ đồng bộ khác
+    // Data has been automatically updated through separate tasks
+    // This function can be extended to perform other synchronization tasks
 }
 
 /* USER CODE BEGIN 4 */
