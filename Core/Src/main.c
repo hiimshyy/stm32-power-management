@@ -45,16 +45,19 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
-DMA_HandleTypeDef hdma_usart2_tx;
 
 osThreadId defaultTaskHandle;
 osThreadId bmsTaskHandle;
 osThreadId sk60xTaskHandle;
-osThreadId ina219TaskHandle;
+//osThreadId ina219TaskHandle;
 osThreadId modbusTaskHandle;
+
+// Removed uartMutexHandle - UART1 and UART2 are separate peripherals
 /* USER CODE BEGIN PV */
 // Variables for relay control logic (accessible from Modbus)
 INA219_t ina_12v, ina_5v, ina_3v3;
@@ -65,15 +68,15 @@ float voltage_threshold = 13.5f;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM2_Init(void);
 void StartDefaultTask(void const * argument);
 void StartBMSTask(void const * argument);
 void StartSK60xTask(void const * argument);
-void StartTaskINA219(void const * argument);
+//void StartTaskINA219(void const * argument);
 void StartTaskModbus(void const * argument);
 
 /* USER CODE BEGIN PFP */
@@ -114,20 +117,24 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_I2C1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   DalyBMS_Set_Callback(DalyBMS_On_Request_Done);
 //  Debug_Init();
 //  Debug_SetMode(DEBUG_NONE);
   ModbusRTU_Init(&huart2);
+  INA219_Init(&ina_12v, &hi2c1, INA219_ADDR_12V, 0.1f, 3.0f);   // Rshunt = 0.1Ω, max current 3A
+  INA219_Init(&ina_5v,  &hi2c1, INA219_ADDR_5V,  0.1f, 3.0f);
+  INA219_Init(&ina_3v3, &hi2c1, INA219_ADDR_3V3, 0.1f, 3.0f);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
 	/* add mutexes, ... */
+	// Removed UART mutex - UART1 and UART2 are separate peripherals
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -144,7 +151,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 64);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of bmsTask */
@@ -156,8 +163,8 @@ int main(void)
   sk60xTaskHandle = osThreadCreate(osThread(sk60xTask), NULL);
 
   /* definition and creation of ina219Task */
-  osThreadDef(ina219Task, StartTaskINA219, osPriorityNormal, 0, 128);
-  ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
+//  osThreadDef(ina219Task, StartTaskINA219, osPriorityNormal, 0, 128);
+//  ina219TaskHandle = osThreadCreate(osThread(ina219Task), NULL);
 
   /* definition and creation of modbusTask */
   osThreadDef(modbusTask, StartTaskModbus, osPriorityNormal, 0, 128);
@@ -264,6 +271,51 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 65535;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -363,22 +415,6 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA1_Channel7_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -451,24 +487,27 @@ static void MX_GPIO_Init(void)
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    ModbusRTU_RxCpltCallback(huart);
+    // Only handle UART2 (Modbus RTU) callbacks
+    if (huart->Instance == USART2) {
+        ModbusRTU_RxCpltCallback(huart);
+    }
+    // UART1 (BMS) uses blocking calls, no callback needed
+    // UART3 can be added here if needed
 }
 
-/**
- * @brief UART Tx Complete Callback
- * @param huart: UART handle pointer
- */
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    if (huart == modbus_rtu.huart) {
-        // 🔥 Reset buffer and restart receive after transmit completion
-        modbus_rtu.rx_length = 0;
-        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
-
-        if (huart->RxState == HAL_UART_STATE_READY) {
-            HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
-        }
+    // Handle UART2 (Modbus RTU) error callbacks
+    if (huart->Instance == USART2) {
+        ModbusRTU_ErrorCallback(huart);
     }
+    // Handle UART1 (BMS) error callbacks - reset BMS connection on error
+    else if (huart->Instance == USART1) {
+        HAL_GPIO_TogglePin(LED_FAULT_GPIO_Port, LED_FAULT_Pin);  // Debug: BMS UART error
+        // Reset BMS connection status on UART error
+        bms_data.connection_status = false;
+    }
+    // UART3 can be added here if needed
 }
 
 /* USER CODE END 4 */
@@ -483,7 +522,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void StartDefaultTask(void const * argument)
 {
   /* init code for USB_DEVICE */
-//  MX_USB_DEVICE_Init();
+  // MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
     /* Infinite loop */
     for(;;)
@@ -523,11 +562,13 @@ void StartBMSTask(void const * argument)
 	/* Infinite loop */
 	for(;;)
 	{
+		// BMS runs independently - no need to check Modbus status
 		switch (_request_counter)
 	    {
 	  		case 0: // Request pack data & connectivity status
 	  			if (DalyBMS_Get_Pack_Data())
 	  			{
+	  				// LED sáng khi BMS kết nối thành công
 	  				HAL_GPIO_WritePin(LED_GPIO_Port, LED_UART_Pin, GPIO_PIN_SET);
 	  				bms_data.connection_status = true;
 	  				_error_counter = 0; // Reset error counter on successful data retrieval
@@ -535,6 +576,7 @@ void StartBMSTask(void const * argument)
 	  			}
 	  			else
 	  			{
+	  				// LED tắt khi BMS mất kết nối
 	  				HAL_GPIO_WritePin(LED_GPIO_Port, LED_UART_Pin, GPIO_PIN_RESET);
 	  				_request_counter = 0; // Reset request counter on failure
 	  				if (_error_counter < MAX_ERROR) {
@@ -549,54 +591,54 @@ void StartBMSTask(void const * argument)
 	  			}
 	  			//Debug_Printf("BMS request counter: %d\n", _request_counter);
 	  			break;
-	  		case 1: // Request min/max cell voltage
-	  			_request_counter = DalyBMS_Get_Min_Max_Cell_Voltage() ? (_request_counter + 1) : 0;
-//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
-	  			break;
-	  		case 2: // Request min/max temperature
-	  			_request_counter = DalyBMS_Get_Pack_Temperature() ? (_request_counter + 1) : 0;
-//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
-	  			break;
-	  		case 3: // Request charge/discharge MOS status
-	  			_request_counter = DalyBMS_Get_Charge_Discharge_Status() ? (_request_counter + 1) : 0;
-//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
-	  			break;
-	  		case 4: // Request status info
-	  			//Debug_Printf("In case 4!\n");
-	  			_request_counter = DalyBMS_Get_Status_Info() ? (_request_counter + 1) : 0;
-//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
-	  			break;
-	  		case 5: // Request cell voltages
-	  			_request_counter = DalyBMS_Get_Cell_Voltages() ? (_request_counter + 1) : 0;
-//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
-	  			break;
-	  		case 6: // Request cell temperatures
-	  			_request_counter = DalyBMS_Get_Cell_Temperatures() ? (_request_counter + 1) : 0;
-//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
-	  			break;
-	  		case 7: // Request cell balance state
-	  			_request_counter = DalyBMS_Get_Cell_Balance_State() ? (_request_counter + 1) : 0;
-//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
-	  			break;
-	  		case 8: // Request failure codes
-	  			_request_counter = DalyBMS_Get_Failure_Codes() ? (_request_counter + 1) : 0;
-	  			if (_get_static_data) _request_counter = 0; // Reset request counter if static data is requested
-	  			if (_bms_request_callback) _bms_request_callback();
-	  			break;
-	  		case 9: // Request Voltage Thresholds
-	  			if (!_get_static_data) _request_counter = DalyBMS_Get_Voltage_Thresholds() ? (_request_counter + 1) : 0;
-	  			if (_bms_request_callback) _bms_request_callback();
-	  			break;
-	  		case 10: // Request Pack Thresholds
-	  			if (!_get_static_data) _request_counter = DalyBMS_Get_Pack_Thresholds() ? (_request_counter + 1) : 0;
-	  			_request_counter = 0; // Reset request counter after pack thresholds
-	  			if (_bms_request_callback) _bms_request_callback();
-	  			_get_static_data = true;
-	  			break;
-	  		default:
-	  			break;
-	    }
-    osDelay(40);
+		  		case 1: // Request min/max cell voltage
+		  			_request_counter = DalyBMS_Get_Min_Max_Cell_Voltage() ? (_request_counter + 1) : 0;
+		//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
+		  			break;
+		  		case 2: // Request min/max temperature
+		  			_request_counter = DalyBMS_Get_Pack_Temperature() ? (_request_counter + 1) : 0;
+		//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
+		  			break;
+		  		case 3: // Request charge/discharge MOS status
+		  			_request_counter = DalyBMS_Get_Charge_Discharge_Status() ? (_request_counter + 1) : 0;
+		//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
+		  			break;
+		  		case 4: // Request status info
+		  			//Debug_Printf("In case 4!\n");
+		  			_request_counter = DalyBMS_Get_Status_Info() ? (_request_counter + 1) : 0;
+		//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
+		  			break;
+		  		case 5: // Request cell voltages
+		  			_request_counter = DalyBMS_Get_Cell_Voltages() ? (_request_counter + 1) : 0;
+		//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
+		  			break;
+		  		case 6: // Request cell temperatures
+		  			_request_counter = DalyBMS_Get_Cell_Temperatures() ? (_request_counter + 1) : 0;
+		//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
+		  			break;
+		  		case 7: // Request cell balance state
+		  			_request_counter = DalyBMS_Get_Cell_Balance_State() ? (_request_counter + 1) : 0;
+		//	  			Debug_Printf("BMS request counter: %d\n", _request_counter);
+		  			break;
+		  		case 8: // Request failure codes
+		  			_request_counter = DalyBMS_Get_Failure_Codes() ? (_request_counter + 1) : 0;
+		  			if (_get_static_data) _request_counter = 0; // Reset request counter if static data is requested
+		  			if (_bms_request_callback) _bms_request_callback();
+		  			break;
+		  		case 9: // Request Voltage Thresholds
+		  			if (!_get_static_data) _request_counter = DalyBMS_Get_Voltage_Thresholds() ? (_request_counter + 1) : 0;
+		  			if (_bms_request_callback) _bms_request_callback();
+		  			break;
+		  		case 10: // Request Pack Thresholds
+		  			if (!_get_static_data) _request_counter = DalyBMS_Get_Pack_Thresholds() ? (_request_counter + 1) : 0;
+		  			_request_counter = 0; // Reset request counter after pack thresholds
+		  			if (_bms_request_callback) _bms_request_callback();
+		  			_get_static_data = true;
+		  			break;
+		  		default:
+		  			break;
+		    }
+		osDelay(50);  // Increased delay for better stability
   }
   /* USER CODE END StartBMSTask */
 }
@@ -615,7 +657,7 @@ void StartSK60xTask(void const * argument)
   for(;;)
   {
 	  ChargeControl_Process();
-	  osDelay(1);
+	  osDelay(100);
   }
   /* USER CODE END StartSK60xTask */
 }
@@ -627,20 +669,20 @@ void StartSK60xTask(void const * argument)
 * @retval None
 */
 /* USER CODE END Header_StartTaskINA219 */
-void StartTaskINA219(void const * argument)
-{
-  /* USER CODE BEGIN StartTaskINA219 */
-  INA219_Init(&ina_12v, &hi2c1, INA219_ADDR_12V, 0.1f, 3.0f);   // Rshunt = 0.1Ω, max current 3A
-  INA219_Init(&ina_5v,  &hi2c1, INA219_ADDR_5V,  0.1f, 3.0f);
-  INA219_Init(&ina_3v3, &hi2c1, INA219_ADDR_3V3, 0.1f, 3.0f);
-
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1000);
-  }
-  /* USER CODE END StartTaskINA219 */
-}
+//void StartTaskINA219(void const * argument)
+//{
+//  /* USER CODE BEGIN StartTaskINA219 */
+//  INA219_Init(&ina_12v, &hi2c1, INA219_ADDR_12V, 0.1f, 3.0f);   // Rshunt = 0.1Ω, max current 3A
+//  INA219_Init(&ina_5v,  &hi2c1, INA219_ADDR_5V,  0.1f, 3.0f);
+//  INA219_Init(&ina_3v3, &hi2c1, INA219_ADDR_3V3, 0.1f, 3.0f);
+//
+//  /* Infinite loop */
+//  for(;;)
+//  {
+//    osDelay(1000);
+//  }
+//  /* USER CODE END StartTaskINA219 */
+//}
 
 /* USER CODE BEGIN Header_StartTaskModbus */
 /**
@@ -655,8 +697,16 @@ void StartTaskModbus(void const * argument)
   /* Infinite loop */
   for(;;)
   {
+	  // Use the proper Modbus processing function
 	  ModbusRTU_Process();
-    osDelay(1);
+
+	  // Reset if no activity for 10 seconds
+	  if(HAL_GetTick() - modbus_rtu.last_rx_time > 10000) {
+		  ModbusRTU_Reset();
+		  modbus_rtu.last_rx_time = HAL_GetTick();
+	  }
+
+	  osDelay(10);  // Reduced delay for better responsiveness
   }
   /* USER CODE END StartTaskModbus */
 }

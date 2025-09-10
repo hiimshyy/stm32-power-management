@@ -52,6 +52,9 @@ ModbusConfig_t modbus_config = {
     .fc_mask = 0x07  // Support FC 03, 06, 16
 };
 
+// Flag to indicate Modbus is processing
+volatile bool modbus_processing = false;
+
 // External variables from other modules
 extern DalyBMS_Data bms_data;
 extern SK60X_Data sk60x_data;
@@ -92,6 +95,11 @@ HAL_StatusTypeDef ModbusRTU_Init(UART_HandleTypeDef *huart)
     
     memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
     memset(modbus_rtu.tx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+    
+    // Ensure UART is ready before starting receive
+    if (modbus_rtu.huart->RxState != HAL_UART_STATE_READY) {
+        HAL_UART_Abort(modbus_rtu.huart);
+    }
     
     // Start receiving data byte by byte
     return HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
@@ -153,14 +161,30 @@ ModbusStatus_t ModbusRTU_SendResponse(uint8_t *data, uint16_t length)
     data[length + 1] = (crc >> 8) & 0xFF;
     length += 2;
 
+    // Abort any ongoing receive to avoid conflicts
     HAL_UART_AbortReceive_IT(modbus_rtu.huart);
 
-    if (HAL_UART_Transmit_DMA(modbus_rtu.huart, data, length) != HAL_OK) {
-        modbus_rtu.rx_length = 0;
-        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
-        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
+    // Small delay to ensure UART is ready
+    HAL_Delay(1);
+
+    // Send response with longer timeout for large frames
+    uint32_t timeout = (length > 50) ? 200 : 100;
+    if (HAL_UART_Transmit(modbus_rtu.huart, data, length, timeout) != HAL_OK) {
+        HAL_GPIO_TogglePin(LED_FAULT_GPIO_Port, LED_FAULT_Pin);
+        HAL_UART_Abort(modbus_rtu.huart);
         return MODBUS_ERROR_DEVICE_FAILURE;
     }
+    
+    // Clear receive buffer and restart receiving
+    modbus_rtu.rx_length = 0;
+    modbus_rtu.frame_received = false;
+    memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+    
+    // Small delay before restarting receive
+    HAL_Delay(1);
+    
+    // Restart receiving after transmission
+    HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
     
     return MODBUS_OK;
 }
@@ -178,7 +202,6 @@ void ModbusRTU_SendException(uint8_t function_code, uint8_t exception_code)
     
     ModbusRTU_SendResponse(modbus_rtu.tx_buffer, 3);
     
-    // ModbusRTU_SendResponse has already restarted UART receive interrupt
 }
 
 /**
@@ -672,18 +695,30 @@ ModbusStatus_t ModbusRTU_WriteMultipleRegisters(uint8_t *frame, uint16_t length)
  */
 ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
 {
+    // Set processing flag
+    modbus_processing = true;
+    
     // Check minimum length
     if (length < MODBUS_MIN_FRAME_SIZE) {
+#ifdef DEBUG_MODBUS
+        HAL_GPIO_TogglePin(LED_FAULT_GPIO_Port, LED_FAULT_Pin);  // Debug: Frame too short
+#endif
+        modbus_processing = false;
         return MODBUS_ERROR_FRAME;
     }
     
     // Check slave ID
     if (frame[0] != modbus_rtu.slave_id) {
+        modbus_processing = false;
         return MODBUS_OK;  // Not our address, ignore
     }
     
     // Check CRC
     if (!ModbusRTU_CheckCRC(frame, length)) {
+#ifdef DEBUG_MODBUS
+        HAL_GPIO_TogglePin(LED_UART_GPIO_Port, LED_UART_Pin);  // Debug: CRC error
+#endif
+        modbus_processing = false;
         return MODBUS_ERROR_CRC;
     }
     
@@ -712,20 +747,38 @@ ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
     }
     
     // Process according to function code
+    ModbusStatus_t result;
     switch (function_code) {
         case MODBUS_FC_READ_HOLDING_REGISTERS:
-            return ModbusRTU_ReadHoldingRegisters(frame, length);
+            result = ModbusRTU_ReadHoldingRegisters(frame, length);
+            break;
             
         case MODBUS_FC_WRITE_SINGLE_REGISTER:
-            return ModbusRTU_WriteSingleRegister(frame, length);
+            result = ModbusRTU_WriteSingleRegister(frame, length);
+            break;
             
         case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
-            return ModbusRTU_WriteMultipleRegisters(frame, length);
+            result = ModbusRTU_WriteMultipleRegisters(frame, length);
+            break;
             
         default:
             ModbusRTU_SendException(function_code, MODBUS_EXCEPTION_ILLEGAL_FUNCTION);
-            return MODBUS_ERROR_FUNCTION;
+            result = MODBUS_ERROR_FUNCTION;
+            break;
     }
+    
+#ifdef DEBUG_MODBUS
+    if (result == MODBUS_OK) {
+        HAL_GPIO_WritePin(LED_UART_GPIO_Port, LED_UART_Pin, GPIO_PIN_SET);  // Debug: Success
+        HAL_Delay(10);
+        HAL_GPIO_WritePin(LED_UART_GPIO_Port, LED_UART_Pin, GPIO_PIN_RESET);
+    }
+#endif
+    
+    // Clear processing flag
+    modbus_processing = false;
+    
+    return result;
 }
 
 /**
@@ -734,34 +787,78 @@ ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
  */
 void ModbusRTU_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if (huart != modbus_rtu.huart) return;
-    
-    uint32_t current_time = HAL_GetTick();
-    
-    // Check frame timeout (3.5 character times)
-    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 4) {
-        modbus_rtu.rx_length = 0; // Reset buffer
-    }
-    
-    modbus_rtu.last_rx_time = current_time;
-    
-    // 🔥 IMPORTANT: Check buffer before incrementing index
-    if (modbus_rtu.rx_length < MODBUS_MAX_FRAME_SIZE - 1) {
-        modbus_rtu.rx_length++;
+    if (huart == modbus_rtu.huart) 
+    {
+        // Update last receive time
+        modbus_rtu.last_rx_time = HAL_GetTick();
 
-        // Schedule next byte reception
-        if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
-            HAL_UART_Receive_IT(modbus_rtu.huart,
-                              &modbus_rtu.rx_buffer[modbus_rtu.rx_length],
-                              1);
+        if (modbus_rtu.rx_length < MODBUS_MAX_FRAME_SIZE - 1)
+        {
+            modbus_rtu.rx_buffer[modbus_rtu.rx_length++] = huart->Instance->DR;
+            modbus_rtu.frame_received = true;
+
+            // Check if we have received a complete frame
+            if (modbus_rtu.rx_length >= 6)
+            {
+                uint8_t expectedLength = 0;
+                if (modbus_rtu.rx_buffer[1] == 3 || modbus_rtu.rx_buffer[1] == 6)
+                {
+                    expectedLength = 8;
+                }
+                else if (modbus_rtu.rx_buffer[1] == 4)
+                {
+                    expectedLength = 8;
+                }
+                else if (modbus_rtu.rx_buffer[1] == 16)
+                {
+                    if (modbus_rtu.rx_length >= 7)
+                    {
+                        expectedLength = 9 + modbus_rtu.rx_buffer[6];
+                    }
+                }
+
+                // Mark frame as ready for processing (don't process here to avoid conflicts)
+                if (modbus_rtu.rx_length >= expectedLength)
+                {
+                    // Frame is complete, will be processed in ModbusRTU_Process()
+                }
+            }
         }
-    } else {
-        // Buffer overflow - reset
-        modbus_rtu.rx_length = 0;
-        if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY) {
-            HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
+        else
+        {
+            // Buffer overflow, reset
+            modbus_rtu.rx_length = 0;
+            modbus_rtu.frame_received = false;
         }
+        
+        // Continue receiving next byte
+        HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[modbus_rtu.rx_length], 1);
     }
+}
+
+/**
+ * @brief UART Error Callback
+ * @param huart: UART handle pointer
+ */
+void ModbusRTU_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == modbus_rtu.huart)
+    {
+        HAL_GPIO_TogglePin(LED_FAULT_GPIO_Port, LED_FAULT_Pin);
+        ModbusRTU_Reset();
+    }
+}
+
+/**
+ * @brief Reset Modbus RTU
+ */
+void ModbusRTU_Reset(void)
+{
+    modbus_rtu.rx_length = 0;
+    modbus_rtu.frame_received = 0;
+    modbus_rtu.last_rx_time = HAL_GetTick();
+    HAL_UART_Abort(modbus_rtu.huart);
+    HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
 }
 
 /**
@@ -769,19 +866,27 @@ void ModbusRTU_RxCpltCallback(UART_HandleTypeDef *huart)
  */
 void ModbusRTU_Process(void)
 {
-    uint32_t current_time = HAL_GetTick();
-    
-    // Check frame timeout (10ms - safer)
-    if (modbus_rtu.rx_length > 0 && (current_time - modbus_rtu.last_rx_time) > 10) {
-        // Only process if frame has valid length
+    // Process received frame if available
+    if (modbus_rtu.frame_received && modbus_rtu.rx_length > 0) {
+        // Check if frame is complete and valid
         if (modbus_rtu.rx_length >= MODBUS_MIN_FRAME_SIZE) {
             ModbusRTU_ProcessFrame(modbus_rtu.rx_buffer, modbus_rtu.rx_length);
         }
         
+        // Clear frame after processing
         modbus_rtu.rx_length = 0;
+        modbus_rtu.frame_received = false;
         memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
     }
     
+    // Handle timeout - reset if no activity for too long
+    if (modbus_rtu.rx_length > 0 && (HAL_GetTick() - modbus_rtu.last_rx_time) > 50) {
+        modbus_rtu.rx_length = 0;
+        modbus_rtu.frame_received = false;
+        memset(modbus_rtu.rx_buffer, 0, MODBUS_MAX_FRAME_SIZE);
+    }
+    
+    // Ensure UART is receiving if not busy
     if (modbus_rtu.huart->RxState == HAL_UART_STATE_READY && modbus_rtu.rx_length == 0) {
         HAL_UART_Receive_IT(modbus_rtu.huart, &modbus_rtu.rx_buffer[0], 1);
     }
