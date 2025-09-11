@@ -9,10 +9,10 @@
 ../Core/Src/modbus_rtu.c:596:16:ModbusRTU_WriteSingleRegister	16	static
 ../Core/Src/modbus_rtu.c:634:16:ModbusRTU_WriteMultipleRegisters	24	static
 ../Core/Src/modbus_rtu.c:696:16:ModbusRTU_ProcessFrame	24	static
-../Core/Src/modbus_rtu.c:788:6:ModbusRTU_RxCpltCallback	16	static
-../Core/Src/modbus_rtu.c:855:6:ModbusRTU_Reset	16	static
-../Core/Src/modbus_rtu.c:843:6:ModbusRTU_ErrorCallback	8	static
-../Core/Src/modbus_rtu.c:867:6:ModbusRTU_Process	16	static
-../Core/Src/modbus_rtu.c:899:19:ModbusRTU_ApplyConfig	0	static
-../Core/Src/modbus_rtu.c:915:6:ModbusRTU_BaudrateFromCode	0	static
-../Core/Src/modbus_rtu.c:957:6:ModbusRTU_UpdateDataFromSources	0	static
+../Core/Src/modbus_rtu.c:776:6:ModbusRTU_RxCpltCallback	16	static
+../Core/Src/modbus_rtu.c:843:6:ModbusRTU_Reset	16	static
+../Core/Src/modbus_rtu.c:831:6:ModbusRTU_ErrorCallback	8	static
+../Core/Src/modbus_rtu.c:855:6:ModbusRTU_Process	16	static
+../Core/Src/modbus_rtu.c:887:19:ModbusRTU_ApplyConfig	0	static
+../Core/Src/modbus_rtu.c:903:6:ModbusRTU_BaudrateFromCode	0	static
+../Core/Src/modbus_rtu.c:945:6:ModbusRTU_UpdateDataFromSources	0	static

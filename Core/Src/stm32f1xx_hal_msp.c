@@ -233,7 +233,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* USART1 interrupt Init */
-    HAL_NVIC_SetPriority(USART1_IRQn, 7, 0);  // Lowest priority for BMS (blocking calls)
+    HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);  // Medium priority for BMS (interrupt-driven)
     HAL_NVIC_EnableIRQ(USART1_IRQn);
     /* USER CODE BEGIN USART1_MspInit 1 */
 

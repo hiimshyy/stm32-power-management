@@ -63,6 +63,8 @@ osThreadId modbusTaskHandle;
 INA219_t ina_12v, ina_5v, ina_3v3;
 bool relay_power_enabled = false;
 float voltage_threshold = 13.5f;
+
+// BMS Interrupt-driven variables are now handled in daly_bms.c
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -487,12 +489,23 @@ static void MX_GPIO_Init(void)
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    // Only handle UART2 (Modbus RTU) callbacks
+    // Handle UART2 (Modbus RTU) callbacks
     if (huart->Instance == USART2) {
         ModbusRTU_RxCpltCallback(huart);
     }
-    // UART1 (BMS) uses blocking calls, no callback needed
+    // Handle UART1 (BMS) callbacks - interrupt-driven
+    else if (huart->Instance == USART1) {
+        DalyBMS_RxCpltCallback();
+    }
     // UART3 can be added here if needed
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    // Handle UART1 (BMS) transmission complete
+    if (huart->Instance == USART1) {
+        DalyBMS_TxCpltCallback();
+    }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)

@@ -715,9 +715,6 @@ ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
     
     // Check CRC
     if (!ModbusRTU_CheckCRC(frame, length)) {
-#ifdef DEBUG_MODBUS
-        HAL_GPIO_TogglePin(LED_UART_GPIO_Port, LED_UART_Pin);  // Debug: CRC error
-#endif
         modbus_processing = false;
         return MODBUS_ERROR_CRC;
     }
@@ -765,16 +762,7 @@ ModbusStatus_t ModbusRTU_ProcessFrame(uint8_t *frame, uint16_t length)
             ModbusRTU_SendException(function_code, MODBUS_EXCEPTION_ILLEGAL_FUNCTION);
             result = MODBUS_ERROR_FUNCTION;
             break;
-    }
-    
-#ifdef DEBUG_MODBUS
-    if (result == MODBUS_OK) {
-        HAL_GPIO_WritePin(LED_UART_GPIO_Port, LED_UART_Pin, GPIO_PIN_SET);  // Debug: Success
-        HAL_Delay(10);
-        HAL_GPIO_WritePin(LED_UART_GPIO_Port, LED_UART_Pin, GPIO_PIN_RESET);
-    }
-#endif
-    
+    }    
     // Clear processing flag
     modbus_processing = false;
     
